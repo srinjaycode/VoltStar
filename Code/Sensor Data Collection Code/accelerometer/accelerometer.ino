@@ -13,7 +13,7 @@ void setup(void)
 {
   Serial.begin(9600); 
   Serial.println("Accelerometer Test"); Serial.println("");
- 
+  Serial.println("Github test"); // Random not important test
   /* Initialise the sensor */
   if(!accel.begin())
   {
