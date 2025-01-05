@@ -14,6 +14,7 @@ void setup(void)
 {
   Serial.begin(9600); //Begin serial communication
   Serial.println("Arduino Digital Temperature // Serial Monitor Version"); //Print a message
+  Serial.println("ignore"); // ignore yay
   sensors.begin();
 }
 
