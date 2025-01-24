@@ -1,0 +1,5 @@
+GPS    Arduino
+GND  -> GND
+TX   -> 4
+RX   -> 3
+VCC  -> 5V
