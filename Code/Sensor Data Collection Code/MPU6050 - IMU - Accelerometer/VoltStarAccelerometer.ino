@@ -27,13 +27,27 @@ unsigned long previousTime = 0;
 // Small acceleration threshold to treat as zero
 const float smallAccelThreshold = 0.02;  // m/s^2, below which acceleration is considered as zero
 
-// Vibration threshold
-float vibrationThreshold = 1.5;  // Adjust this as needed
+// Vibration thresholds
+float vibrationLowThreshold = 1.5;  // Low vibration threshold
+float vibrationHighThreshold = 3.0;  // High vibration threshold
 
 // Variables for motion detection and reset
 unsigned long motionDetectionTimeout = 3000;  // 3 seconds of no motion to reset distance
 unsigned long lastMotionTime = 0;
 bool isMoving = false;
+
+// Kalman filter variables
+float kfP = 1, kfQ = 0.1, kfR = 0.5; // Process noise, measurement noise, covariance
+float kfX = 0, kfPNow = 1;          // Estimated value and covariance
+
+// Kalman filter function
+float kalmanFilter(float measurement) {
+  kfPNow += kfQ;                                // Predict covariance
+  float kfK = kfPNow / (kfPNow + kfR);          // Kalman gain
+  kfX += kfK * (measurement - kfX);             // Update estimate
+  kfPNow *= (1 - kfK);                          // Update covariance
+  return kfX;
+}
 
 void calibrateSensor() {
   Serial.println("Calibrating MPU6050...");
@@ -85,9 +99,9 @@ void loop() {
   mpu.getEvent(&a, &g, &temp);
 
   // Subtract offsets to get real acceleration
-  float ax = a.acceleration.x - axOffset;
-  float ay = a.acceleration.y - ayOffset;
-  float az = a.acceleration.z - azOffset;  // Removes gravity component
+  float ax = kalmanFilter(a.acceleration.x - axOffset);
+  float ay = kalmanFilter(a.acceleration.y - ayOffset);
+  float az = kalmanFilter(a.acceleration.z - azOffset);  // Removes gravity component
 
   // Apply low-pass filter (exponential smoothing) for noise reduction
   axFiltered = alpha * ax + (1 - alpha) * axFiltered;
@@ -147,8 +161,15 @@ void loop() {
     velocityZ = 0;
   }
 
-  // Calculate vibration (detect sudden changes in acceleration)
-  bool isVibrating = accelerationMagnitude > vibrationThreshold;
+  // Categorize vibration level
+  String vibrationLevel;
+  if (accelerationMagnitude > vibrationHighThreshold) {
+    vibrationLevel = "Crash";
+  } else if (accelerationMagnitude > vibrationLowThreshold) {
+    vibrationLevel = "Moderate Impact";
+  } else {
+    vibrationLevel = "Low (Turbulence)";
+  }
 
   // Tilt calculation (using atan2 for better accuracy)
   float pitch = atan2(ayFiltered, azFiltered) * 180.0 / PI;  // In degrees
@@ -173,8 +194,8 @@ void loop() {
   Serial.print("Distance Magnitude: ");
   Serial.println(distanceMagnitude);
 
-  Serial.print("Vibration Detected: ");
-  Serial.println(isVibrating ? "Yes" : "No");
+  Serial.print("Vibration Level: ");
+  Serial.println(vibrationLevel);
 
   Serial.print("Tilt (Pitch, Roll): ");
   Serial.print(pitch); Serial.print(", ");
