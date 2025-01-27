@@ -1,103 +1,132 @@
 #include <TinyGPS++.h>
 #include <SoftwareSerial.h>
-/* Create object named bt of the class SoftwareSerial */
-SoftwareSerial GPS_SoftSerial(4, 3);/* (Rx, Tx) */
-/* Create an object named gps of the class TinyGPSPlus */
-TinyGPSPlus gps;			
 
-volatile float minutes, seconds;
-volatile int degree, secs, mins;
+// GPS Module connection
+SoftwareSerial GPS_SoftSerial(4, 3); // (Rx, Tx)
+TinyGPSPlus gps;
+
+// Constants
+const double EARTH_RADIUS = 6371000;  // Earth's radius in meters
+const unsigned long GPS_TIMEOUT = 60000; // 60 seconds timeout for initial GPS fix
+unsigned long startupTime;
+
+// Variables for speed calculation
+float prevLat = 0.0, prevLon = 0.0;
+unsigned long prevTime = 0;
+float currentSpeed = 0.0;
+
+double toRadians(double degrees) {
+    return degrees * PI / 180.0;
+}
+
+double haversine(double lat1, double lon1, double lat2, double lon2) {
+    double phi1 = toRadians(lat1);
+    double phi2 = toRadians(lat2);
+    double delta_phi = toRadians(lat2 - lat1);
+    double delta_lambda = toRadians(lon2 - lon1);
+
+    double a = sin(delta_phi / 2.0) * sin(delta_phi / 2.0) +
+               cos(phi1) * cos(phi2) * sin(delta_lambda / 2.0) * sin(delta_lambda / 2.0);
+    double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+
+    return EARTH_RADIUS * c;
+}
+
+double calculateSpeed(double lat1, double lon1, unsigned long time1, 
+                     double lat2, double lon2, unsigned long time2) {
+    if (lat1 == 0.0 || lon1 == 0.0) return 0.0;
+    
+    double distance = haversine(lat1, lon1, lat2, lon2);
+    double time_diff = (time2 - time1) / 1000.0; // Convert to seconds
+    
+    if (time_diff < 0.1) return currentSpeed; // Use previous speed if time difference is too small
+    
+    // Calculate new speed and apply simple moving average filter
+    double newSpeed = distance / time_diff;
+    currentSpeed = (currentSpeed * 0.7) + (newSpeed * 0.3); // Smooth the speed
+    
+    return currentSpeed;
+}
 
 void setup() {
-  Serial.begin(9600);	/* Define baud rate for serial communication */
-  GPS_SoftSerial.begin(9600);	/* Define baud rate for software serial communication */
+    Serial.begin(9600);
+    GPS_SoftSerial.begin(9600);
+    
+    Serial.println("GPS Module Initializing...");
+    Serial.println("Please wait for satellite connection...");
+    
+    startupTime = millis();
+}
+
+void printGPSInfo() {
+    Serial.println("\n-------- GPS DATA --------");
+    
+    if (gps.satellites.isValid()) {
+        Serial.print("Satellites: ");
+        Serial.println(gps.satellites.value());
+    }
+
+    if (gps.location.isValid()) {
+        Serial.print("Latitude : ");
+        Serial.println(gps.location.lat(), 6);
+        Serial.print("Longitude: ");
+        Serial.println(gps.location.lng(), 6);
+        
+        if (gps.speed.isValid()) {
+            Serial.print("GPS Speed (km/h): ");
+            Serial.println(gps.speed.kmph());
+        }
+        
+        // Calculate our own speed using Haversine formula
+        double currentLat = gps.location.lat();
+        double currentLon = gps.location.lng();
+        unsigned long currentTime = millis();
+
+        if (prevLat != 0.0 && prevLon != 0.0) {
+            double calculatedSpeed = calculateSpeed(prevLat, prevLon, prevTime,
+                                                 currentLat, currentLon, currentTime);
+            Serial.print("Calculated Speed (km/h): ");
+            Serial.println(calculatedSpeed * 3.6, 1);  // Convert m/s to km/h
+        }
+
+        // Update previous values
+        prevLat = currentLat;
+        prevLon = currentLon;
+        prevTime = currentTime;
+    } else {
+        unsigned long waitTime = (millis() - startupTime) / 1000;
+        Serial.println("Location: Not Available");
+        Serial.print("Waiting for fix: ");
+        Serial.print(waitTime);
+        Serial.println(" seconds");
+    }
+
+    if (gps.time.isValid()) {
+        Serial.print("Time: ");
+        if (gps.time.hour() < 10) Serial.print("0");
+        Serial.print(gps.time.hour());
+        Serial.print(":");
+        if (gps.time.minute() < 10) Serial.print("0");
+        Serial.print(gps.time.minute());
+        Serial.print(":");
+        if (gps.time.second() < 10) Serial.print("0");
+        Serial.println(gps.time.second());
+    }
+    
+    Serial.println("--------------------------");
 }
 
 void loop() {
-        smartDelay(1000);	/* Generate precise delay of 1ms */
-        unsigned long start;
-        double lat_val, lng_val, alt_m_val;
-        uint8_t hr_val, min_val, sec_val;
-        bool loc_valid, alt_valid, time_valid;
-        lat_val = gps.location.lat();	/* Get latitude data */
-        loc_valid = gps.location.isValid();	/* Check if valid location data is available */
-        lng_val = gps.location.lng();	/* Get longtitude data */
-        alt_m_val = gps.altitude.meters();	/* Get altitude data in meters */
-        alt_valid = gps.altitude.isValid();	/* Check if valid altitude data is available */
-        hr_val = gps.time.hour();	/* Get hour */
-        min_val = gps.time.minute(); 	/* Get minutes */
-        sec_val = gps.time.second();	/* Get seconds */
-        time_valid = gps.time.isValid();	/* Check if valid time data is available */
-        if (!loc_valid)
-        {          
-          Serial.print("Latitude : ");
-          Serial.println("*****");
-          Serial.print("Longitude : ");
-          Serial.println("*****");
-        }
-        else
-        {
-          DegMinSec(lat_val);
-          Serial.print("Latitude in Decimal Degrees : ");
-          Serial.println(lat_val, 6);
-          Serial.print("Latitude in Degrees Minutes Seconds : ");
-          Serial.print(degree);
-          Serial.print("\t");
-          Serial.print(mins);
-          Serial.print("\t");
-          Serial.println(secs);
-          DegMinSec(lng_val);	/* Convert the decimal degree value into degrees minutes seconds form */
-          Serial.print("Longitude in Decimal Degrees : ");
-          Serial.println(lng_val, 6);
-          Serial.print("Longitude in Degrees Minutes Seconds : ");
-          Serial.print(degree);
-          Serial.print("\t");
-          Serial.print(mins);
-          Serial.print("\t");
-          Serial.println(secs);
-        }
-        if (!alt_valid)
-        {
-          Serial.print("Altitude : ");
-          Serial.println("*****");
-        }
-        else
-        {
-          Serial.print("Altitude : ");
-          Serial.println(alt_m_val, 6);    
-        }
-        if (!time_valid)
-        {
-          Serial.print("Time : ");
-          Serial.println("*****");
-        }
-        else
-        {
-          char time_string[32];
-          sprintf(time_string, "Time : %02d/%02d/%02d \n", hr_val, min_val, sec_val);
-          Serial.print(time_string);    
-        }
-}
+    static unsigned long lastPrint = 0;
+    
+    // Read GPS data
+    while (GPS_SoftSerial.available()) {
+        gps.encode(GPS_SoftSerial.read());
+    }
 
-static void smartDelay(unsigned long ms)
-{
-  unsigned long start = millis();
-  do 
-  {
-    while (GPS_SoftSerial.available())	/* Encode data read from GPS while data is available on serial port */
-      gps.encode(GPS_SoftSerial.read());
-/* Encode basically is used to parse the string received by the GPS and to store it in a buffer so that information can be extracted from it */
-  } while (millis() - start < ms);
-}
-
-void DegMinSec( double tot_val)		/* Convert data in decimal degrees into degrees minutes seconds form */
-{  
-  degree = (int)tot_val;
-  minutes = tot_val - degree;
-  seconds = 60 * minutes;
-  minutes = (int)seconds;
-  mins = (int)minutes;
-  seconds = seconds - minutes;
-  seconds = 60 * seconds;
-  secs = (int)seconds;
+    // Update display every 2 seconds
+    if (millis() - lastPrint >= 2000) {
+        lastPrint = millis();
+        printGPSInfo();
+    }
 }
