@@ -1,95 +1,83 @@
-# VoltStar Telemetry System
+# VoltStar Telemetry System (VTS)
 
-**VTS** is a real-time telemetry system designed to monitor vehicle performance using sensors like IMU (Inertial Measurement Unit), GPS, and temperature sensors. Data is wirelessly transmitted via LoRa modules to a Raspberry Pi, where it is processed and presented in real-time.
+The **VoltStar Telemetry System** (VTS) is a real-time vehicle performance monitoring solution designed to collect and transmit data from various sensors, including an Inertial Measurement Unit (IMU), GPS, and temperature sensors. The data is wirelessly transmitted using LoRa modules to a Raspberry Pi, where it is processed and displayed in real-time for analytical purposes.
 
 ## Features
-
-- **IMU Sensor (MPU6050)**: Tracks vehicle orientation (pitch, roll, yaw).
-- **GPS Module**: Tracks location and calculates speed using the Haversine formula.
-- **Temperature Sensors (DS18B20)**: Monitors temperature in the controller and batteries.
-- **LoRa Modules**: Facilitates wireless data transmission to a Raspberry Pi for real-time analytics.
-- **TFT Display**: Shows critical data like speed and warnings for the driver (e.g., speed alerts).
+- **IMU Sensor (MPU6050)**: Monitors vehicle orientation (pitch, roll, yaw).
+- **GPS Module**: Tracks the vehicle's location and calculates speed using the Haversine formula.
+- **Temperature Sensors (DS18B20)**: Monitors the temperature in the vehicle's controller and batteries.
+- **LoRa Modules**: Enables wireless transmission of telemetry data to a Raspberry Pi.
+- **TFT Display**: Displays real-time metrics, including speed and warnings (e.g., speed alerts) for the driver.
 
 ## Code Overview
+This project is divided into two main components: the Arduino code (for sensor data collection and transmission) and the Raspberry Pi setup (for data reception and analytics).
 
-The project is built using **Arduino IDE** and is split into two primary components:
+### Arduino Code:
+- Collects data from the IMU, GPS, and temperature sensors.
+- Calculates orientation (pitch, roll, yaw) and speed.
+- Transmits the data via LoRa to the Raspberry Pi.
 
-1. **Arduino Code**: 
-   - Reads data from the IMU, GPS, and temperature sensors.
-   - Calculates orientation (pitch, roll, yaw) and speed.
-   - Transmits the data via LoRa to the Raspberry Pi.
+### Raspberry Pi Setup:
+- Receives telemetry data from the Arduino via LoRa.
+- Processes and displays data for real-time analytics and monitoring (dashboard development in progress).
 
-2. **Raspberry Pi Setup**: 
-   - Receives the telemetry data via LoRa.
-   - Processes and displays the data for analytics and monitoring (dashboard still under development).
-
-### Libraries Used:
+## Libraries Used:
 - **Wire**: For communication with the IMU.
-- **Adafruit_GPS**: For handling GPS data.
+- **Adafruit_GPS**: For processing GPS data.
 - **LoRa**: For LoRa communication.
-- **OneWire & DallasTemperature**: For reading from the temperature sensors.
+- **OneWire & DallasTemperature**: For reading temperature sensor data.
+- **MCUFRIEND_kbv**: For managing TFT display communication.
+- **Adafruit_GFX**: For handling graphic drawing on TFT displays.
 
 ## Project Structure
+The project is organized for easy navigation and access:
 
-The project is organized into several folders and files for ease of navigation:
+- `/Circuits/`: Circuit diagrams for all components.
+- `/Excel Sheets/`: Component list and cost estimation.
+- `/Measurements/`: 3D model measurements for parts and components.
+- `/Code/`: Source code for all components.
 
-### `/Circuits/` folder
-Contains the circuit diagrams for all components.
-
-### `/Excel Sheets/` folder
-Contains the sheet for all required components & costs.
-
-### `/Measurements/` folder
-Contains the measurements for all 3D models used/printed.
-
-### `/Code/` folder
-Contains the source code:
-### `/Sensor Data Collection Code/` folder: Contains the code for data collection for all sensor devices.
-- **RTC.ino**: Basic arduino program for the Real-Time-Clock.
-- **gps_code_voltstar.ino**: Arduino code using the haversine formula to calculate the instantaneous speed of the car with GPS module.
-- **VoltStarAccelerometer.ino**: Core code for IMU, tracking distance, vibration, tilt, and velocity using various filters (Kalman, LPF) and algorithms.
-- **VoltStarTFTDisplay.ino**: Code for showing metrics on the TFT display (velocity, temp).
-- **Temperature.ino**: Code for retrieving temperature in DS18B20 sensors.
-
+  - `/Sensor Data Collection Code/`: Code for collecting sensor data.
+    - **RTC.ino**: Basic Arduino program for Real-Time Clock (RTC).
+    - **gps_code_voltstar.ino**: Arduino code that calculates vehicle speed using GPS data and the Haversine formula.
+    - **VoltStarAccelerometer.ino**: Core code for IMU sensor; tracks distance, vibration, tilt, and velocity using filters (Kalman, LPF).
+    - **VoltStarTFTDisplay.ino**: Code to display metrics (e.g., speed, temperature) on a TFT display.
+    - **Temperature.ino**: Code to read data from the DS18B20 temperature sensors.
 
 ## Installation & Setup
 
-### Hardware Setup:
-1. **Arduino**:
-   - Connect the **MPU6050** (IMU) to the Arduino via I2C.
-   - Connect the **GPS Module** to the Arduino via serial communication.
-   - Attach the **DS18B20** temperature sensors to the Arduino.
-   - Connect the **LoRa Module** for wireless data transmission.
-   - Set up the **TFT Display** for showing speed and alerts.
+### Hardware Setup
 
-2. **Raspberry Pi**:
-   - Set up a LoRa receiver on the Raspberry Pi to receive data.
-   - Prepare for the future dashboard setup (currently under development).
+#### Arduino:
+1. Connect the **MPU6050 (IMU)** to the Arduino using I2C communication.
+2. Connect the **GPS Module** to the Arduino via serial communication.
+3. Attach **DS18B20 temperature sensors** to the Arduino.
+4. Set up the **LoRa Module** for wireless data transmission.
+5. Connect the **TFT Display** to show speed and alerts.
+
+#### Raspberry Pi:
+1. Set up a **LoRa receiver** on the Raspberry Pi to receive data.
+2. Prepare for dashboard integration (currently under development).
 
 ### Arduino Code:
 1. Clone or download the repository.
 2. Open the Arduino IDE and load the appropriate code for your Arduino model.
-3. Upload the code to your Arduino board.
-4. Ensure the sensors are correctly connected to the corresponding pins.
+3. Upload the code to the Arduino board.
+4. Ensure that all sensors are correctly connected to the respective pins.
 
 ### Raspberry Pi Setup:
-1. Install necessary libraries to handle LoRa communication and data reception.
-2. Set up the Raspberry Pi to receive telemetry data from the Arduino via LoRa (use a LoRa receiver module).
-3. Display the telemetry data on a dashboard (still in progress).
+1. Install the necessary libraries for LoRa communication and data reception.
+2. Set up the Raspberry Pi to receive telemetry data from the Arduino via LoRa.
+3. Display telemetry data on a dashboard (under development).
 
 ## How to Use
-- **For the Driver**: The **TFT Display** will show essential real-time data, like the current speed and alerts if the speed exceeds a predefined limit.
-- **For Monitoring**: The telemetry data is sent to the **Raspberry Pi**, which can be used for further analysis or displayed on a dashboard.
+
+- **For the Driver**: The TFT display will provide essential real-time data such as current speed and warnings if the speed exceeds a predefined limit.
+- **For Monitoring**: Telemetry data will be transmitted to the Raspberry Pi for further analysis and can be displayed on a dashboard in future updates.
 
 ## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [MIT License](LICENSE).
 
 ## Contributors
-
-- **Srinjay Shrinivas Shankar** - Project Lead, Arduino Developer
-- **Ahmed Rizwan** - Raspberry Pi Developer, Backend Engineer
-
----
-
-Explore the project and contribute here: [VoltStar GitHub Repository](https://github.com/srinjaycode/VoltStar)
+- **Srinjay Shrinivas Shankar**: Project Lead, Arduino Developer
+- **Ahmed Rizwan**: Raspberry Pi Developer, Backend Engineer
