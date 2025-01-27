@@ -33,30 +33,24 @@ The project is built using **Arduino IDE** and is split into two primary compone
 
 The project is organized into several folders and files for ease of navigation:
 
-### `/src/` folder
-Contains the primary Arduino code files:
-- **main.ino**: The entry point of the Arduino code, responsible for initializing sensors and LoRa communication.
-- **controller.ino**: Contains logic for reading sensor data (IMU, GPS, temperature).
-- **utils.ino**: Helper functions for calculations and communication.
+### `/Circuits/` folder
+Contains the circuit diagrams for all components.
 
-### `/raspberry_pi/` folder
-Contains the Raspberry Pi-specific files:
-- **receiver.py**: Python script for receiving data from LoRa on the Raspberry Pi.
-- **display.py**: Python script for displaying telemetry data (dashboard development ongoing).
+### `/Excel Sheets/` folder
+Contains the sheet for all required components & costs.
 
-### `/docs/` folder
-Contains documentation related to the project:
-- **system_design.md**: A detailed description of the system architecture and design decisions.
-- **user_guide.md**: Guide to set up and use the project.
+### `/Measurements/` folder
+Contains the measurements for all 3D models used/printed.
 
-### `/test/` folder
-Includes unit tests for both the Arduino and Raspberry Pi code:
-- **test_main.ino**: Tests for Arduino sensor reading and LoRa communication.
-- **test_utils.py**: Tests for Raspberry Pi data handling and processing.
+### `/Code/` folder
+Contains the source code:
+- **/Sensor Data Collection Code/**: Contains the code for data collection for all sensor devices.
+- **RTC.ino**: Basic arduino program for the Real-Time-Clock.
+- **gps_code_voltstar.ino**: Arduino code using the haversine formula to calculate the instantaneous speed of the car with GPS module.
+- **VoltStarAccelerometer.ino**: Core code for IMU, tracking distance, vibration, tilt, and velocity using various filters (Kalman, LPF) and algorithms.
+- **VoltStarTFTDisplay.ino**: Code for showing metrics on the TFT display (velocity, temp).
+- **Temperature.ino**: Code for retrieving temperature in DS18B20 sensors.
 
-### `/assets/` folder
-Contains visual diagrams and images relevant to the project:
-- **system_diagram.png**: Diagram illustrating the overall system design and data flow.
 
 ## Installation & Setup
 
