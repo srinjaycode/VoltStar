@@ -44,7 +44,7 @@ Contains the measurements for all 3D models used/printed.
 
 ### `/Code/` folder
 Contains the source code:
-- **/Sensor Data Collection Code/**: Contains the code for data collection for all sensor devices.
+### `/Sensor Data Collection Code/` folder: Contains the code for data collection for all sensor devices.
 - **RTC.ino**: Basic arduino program for the Real-Time-Clock.
 - **gps_code_voltstar.ino**: Arduino code using the haversine formula to calculate the instantaneous speed of the car with GPS module.
 - **VoltStarAccelerometer.ino**: Core code for IMU, tracking distance, vibration, tilt, and velocity using various filters (Kalman, LPF) and algorithms.
