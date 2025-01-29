@@ -79,5 +79,5 @@ The project is organized for easy navigation and access:
 This project is licensed under the [MIT License](LICENSE).
 
 ## Contributors
-- **Srinjay Shrinivas Shankar**: Project Lead, Arduino Developer
-- **Ahmed Rizwan**: Raspberry Pi Developer, Backend Engineer
+- **Srinjay Shrinivas Shankar**: Electronics Engineer, Arduino Developer (C++) and 3D Modeling
+- **Ahmed Rizwan**:  Electronics Engineer, Coder.
