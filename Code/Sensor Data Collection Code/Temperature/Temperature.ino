@@ -2,7 +2,7 @@
 #include <DallasTemperature.h>
 
 // Data wire is connected to Arduino Nano pins
-#define ONE_WIRE_BUS_CONTROLLER    4
+#define ONE_WIRE_BUS_CONTROLLER    6
 #define ONE_WIRE_BUS_BATTERY       3
 
 // Setup a oneWire instance for each bus
