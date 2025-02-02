@@ -82,4 +82,4 @@ This project is licensed under the [MIT License](LICENSE).
 - **Srinjay Shrinivas Shankar**: Electronics Engineer, Arduino Developer (C++) and 3D Modeling
 - **Ahmed Rizwan**:  Electronics Engineer, Coder.
 - **Yahia Ezzat**: C++ Develper, Arduino Coder.
-- **Abdulhayee Yamin**: Professional  C# Yapper
+- **Abdulhayee Yamin**: Ex Game Dev, C# Developer 
