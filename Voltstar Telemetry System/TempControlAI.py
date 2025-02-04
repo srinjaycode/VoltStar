@@ -14,6 +14,9 @@ min_temp, max_temp = temperature.min(), temperature.max()
 time_norm = (time - min_time) / (max_time - min_time)  # Normalize time
 temperature_norm = (temperature - min_temp) / (max_temp - min_temp)  # Normalize temperature
 
+# Ensure time_norm is reshaped to (N,1)
+time_norm = time_norm.reshape(-1, 1)
+
 # Step 3: Build the Regression Model
 model = tf.keras.Sequential([
     tf.keras.layers.Dense(units=16, activation='relu', input_shape=[1]),  # Hidden layer with ReLU
@@ -29,7 +32,7 @@ model.fit(time_norm, temperature_norm, epochs=500, verbose=0)  # Train for 500 e
 # Step 5: Predict Future Temperature at t=12 Minutes
 future_time = 12  # Time at which we want the prediction
 future_time_norm = (future_time - min_time) / (max_time - min_time)  # Normalize input
-future_time_norm = np.array([future_time_norm]).reshape(-1, 1)  # Ensure it's 2D
+future_time_norm = np.array([[future_time_norm]])  # Ensure it's 2D
 
 predicted_temp_norm = model.predict(future_time_norm)[0][0]  # Predict normalized temperature
 predicted_temp = predicted_temp_norm * (max_temp - min_temp) + min_temp  # Convert back to Celsius
@@ -47,8 +50,13 @@ print(f"Reward Score: {reward:.2f}")
 
 # Step 7: Plot the Graph
 plt.scatter(time, temperature, color='blue', label="Actual Data")  # Plot actual data points
-plt.plot(time, model.predict(time_norm) * (max_temp - min_temp) + min_temp, color='red', label="AI Prediction")  # Line of best fit
-plt.scatter([future_time], [predicted_temp], color='green', marker='x', s=100, label="Predicted Point")  # Future prediction
+
+# Ensure time_norm is used properly and output is flattened
+predicted_values = model.predict(time_norm).flatten() * (max_temp - min_temp) + min_temp
+plt.plot(time, predicted_values, color='red', label="AI Prediction")  # Line of best fit
+
+# Plot the predicted point at t=12
+plt.scatter([future_time], [predicted_temp], color='green', marker='x', s=100, label="Predicted Point")
 
 plt.xlabel("Time (minutes)")
 plt.ylabel("Battery Temperature (°C)")
