@@ -1,11 +1,11 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import pandas as pd  # Add pandas for CSV handling
+import pandas as pd
 
 # Function to load temperature data from CSV
 def load_temperature_data(csv_file):
-    # Read CSV file - expecting a column named 'temperature'
+    # Read CSV file
     df = pd.read_csv(csv_file)
     
     # Convert temperature column to numpy array
@@ -22,7 +22,6 @@ OPTIMAL_MAX = 39
 OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
 
 # Load data from CSV instead of using static array
-# Replace 'your_data.csv' with your actual CSV file name
 time, temperature = load_temperature_data('your_data.csv')
 
 # Normalize Data (0 to 1 for TensorFlow)
