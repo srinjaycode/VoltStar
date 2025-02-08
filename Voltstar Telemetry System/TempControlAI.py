@@ -2,65 +2,75 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-# Step 1: Generate Sample Data (Simulated Temperature Readings)
-np.random.seed(0)
-time = np.array(range(1, 11))  # Time in minutes
-temperature = np.array([30, 32, 34, 33, 36, 37, 40, 42, 41, 45])  # Battery temperature in Celsius
+# Constants
+OPTIMAL_MIN = 37
+OPTIMAL_MAX = 39
+OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
 
-# Step 2: Normalize the Data (for better AI training)
-min_time, max_time = time.min(), time.max()
-min_temp, max_temp = temperature.min(), temperature.max()
+# Simulated Data: Time (minutes) & Temperature (Celsius)
+time = np.arange(0, 20, 1)  # 20 time steps
+temperature = np.array([33, 34, 36, 38, 40, 42, 37, 38, 35, 34, 32, 36, 39, 41, 42, 38, 37, 36, 35, 34])
 
-time_norm = (time - min_time) / (max_time - min_time)  # Normalize time
-temperature_norm = (temperature - min_temp) / (max_temp - min_temp)  # Normalize temperature
+# Normalize Data (0 to 1 for TensorFlow)
+min_temp = min(temperature)
+max_temp = max(temperature)
+temperature_norm = (temperature - min_temp) / (max_temp - min_temp)
+time_norm = time / max(time)
 
-# Ensure time_norm is reshaped to (N,1)
-time_norm = time_norm.reshape(-1, 1)
-
-# Step 3: Build the Regression Model
+# Create a Neural Network Model
 model = tf.keras.Sequential([
-    tf.keras.layers.Dense(units=16, activation='relu', input_shape=[1]),  # Hidden layer with ReLU
-    tf.keras.layers.Dense(units=8, activation='relu'),  # Another hidden layer
-    tf.keras.layers.Dense(units=1)  # Output layer predicting normalized temperature
+    tf.keras.layers.Dense(10, activation='relu', input_shape=[1]),  # 1 input (time)
+    tf.keras.layers.Dense(10, activation='relu'),
+    tf.keras.layers.Dense(1)  # 1 output (predicted temperature)
 ])
 
-model.compile(optimizer='adam', loss='mse')  # Using Adam optimizer and Mean Squared Error loss
+# Compile Model
+model.compile(optimizer='adam', loss='mse')
 
-# Step 4: Train the Model
-model.fit(time_norm, temperature_norm, epochs=500, verbose=0)  # Train for 500 epochs
+# Train Model
+model.fit(time_norm, temperature_norm, epochs=500, verbose=0)
 
-# Step 5: Predict Future Temperature at t=12 Minutes
-future_time = 12  # Time at which we want the prediction
-future_time_norm = (future_time - min_time) / (max_time - min_time)  # Normalize input
-future_time_norm = np.array([[future_time_norm]])  # Ensure it's 2D
+# Predict Future Temperatures
+predicted_temp_norm = model.predict(time_norm).flatten()
+predicted_temp = predicted_temp_norm * (max_temp - min_temp) + min_temp  # Convert back to actual scale
 
-predicted_temp_norm = model.predict(future_time_norm)[0][0]  # Predict normalized temperature
-predicted_temp = predicted_temp_norm * (max_temp - min_temp) + min_temp  # Convert back to Celsius
+# Fan Speed Control Logic
+fan_speeds = []  # Store fan speed over time
+fan_speed = 50  # Initial fan speed
 
-# Step 6: Calculate Difference from Optimum Temperature
-optimum_temp = 38
-diff = abs(predicted_temp - optimum_temp)
+for i in range(1, len(predicted_temp)):
+    current_temp = predicted_temp[i]
+    previous_temp = predicted_temp[i - 1]
 
-# Reward function: the smaller the diff, the better the prediction
-reward = max(0, 10 - diff)  # Example: reward decreases as diff increases
+    # Compute Difference from Optimal Temp
+    diff = current_temp - OPTIMAL_TEMP
+    prev_diff = previous_temp - OPTIMAL_TEMP
 
-print(f"Predicted Temperature at t=12 minutes: {predicted_temp:.2f}°C")
-print(f"Difference from Optimum: {diff:.2f}°C")
-print(f"Reward Score: {reward:.2f}")
+    # AI Decision Making
+    if abs(diff) < abs(prev_diff):
+        fan_speeds.append(fan_speed)  # No change
+    else:
+        if diff > 0:
+            fan_speed += 10  # Increase fan speed if temp is too high
+        else:
+            fan_speed -= 10  # Decrease fan speed if temp is too low
 
-# Step 7: Plot the Graph
-plt.scatter(time, temperature, color='blue', label="Actual Data")  # Plot actual data points
+        fan_speed = max(0, min(100, fan_speed))  # Ensure fan speed stays 0-100%
+        fan_speeds.append(fan_speed)
 
-# Ensure time_norm is used properly and output is flattened
-predicted_values = model.predict(time_norm).flatten() * (max_temp - min_temp) + min_temp
-plt.plot(time, predicted_values, color='red', label="AI Prediction")  # Line of best fit
+# Add initial fan speed for plotting
+fan_speeds.insert(0, 50)
 
-# Plot the predicted point at t=12
-plt.scatter([future_time], [predicted_temp], color='green', marker='x', s=100, label="Predicted Point")
+# Plot Graph
+plt.figure(figsize=(10, 5))
+plt.plot(time, temperature, 'bo-', label="Actual Temperature")  # Actual temp data
+plt.plot(time, predicted_temp, 'r-', label="AI Predicted Temperature")  # Predicted temp
+plt.plot(time, fan_speeds, 'g--', label="Fan Speed (%)")  # Fan speed over time
+plt.axhline(y=OPTIMAL_MIN, color='gray', linestyle='dashed', label="Optimal Min (37°C)")
+plt.axhline(y=OPTIMAL_MAX, color='gray', linestyle='dashed', label="Optimal Max (39°C)")
 
 plt.xlabel("Time (minutes)")
-plt.ylabel("Battery Temperature (°C)")
-plt.title("Battery Temperature Prediction")
+plt.ylabel("Temperature (°C) & Fan Speed (%)")
 plt.legend()
-plt.grid()
+plt.title("AI Fan Control System")
 plt.show()
