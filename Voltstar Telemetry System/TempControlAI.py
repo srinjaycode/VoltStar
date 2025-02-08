@@ -65,20 +65,24 @@ for i in range(1, len(predicted_temp)):
     # Compute Slope of Temperature Change
     slope = abs(current_temp - previous_temp)
 
-    # AI Decision Making for Fan Speed
-    if abs(diff) < abs(prev_diff):
-        fan_speeds.append(fan_speed)  # No change
+    # Condition: If temperature is within optimal range and slope is between -0.5 and 0.5
+    if OPTIMAL_MIN <= current_temp <= OPTIMAL_MAX and -0.5 < slope < 0.5:
+        fan_speeds.append(fan_speed)  # Keep fan speed as is
     else:
-        # AI Decides n Based on Slope
-        n = min(5, max(1, int(slope * 5)))  # n ranges from 1 to 5, based on slope
-        
-        if diff > 0:
-            fan_speed += 10 * n  # Increase fan speed if temp is too high
+        # AI Decision Making for Fan Speed Change
+        if abs(diff) < abs(prev_diff):
+            fan_speeds.append(fan_speed)  # No change
         else:
-            fan_speed -= 10 * n  # Decrease fan speed if temp is too low
+            # AI Decides n Based on Slope
+            n = min(5, max(1, int(slope * 5)))  # n ranges from 1 to 5, based on slope
+            
+            if diff > 0:
+                fan_speed += 10 * n  # Increase fan speed if temp is too high
+            else:
+                fan_speed -= 10 * n  # Decrease fan speed if temp is too low
 
-        fan_speed = max(0, min(100, fan_speed))  # Ensure fan speed stays 0-100%
-        fan_speeds.append(fan_speed)
+            fan_speed = max(0, min(100, fan_speed))  # Ensure fan speed stays 0-100%
+            fan_speeds.append(fan_speed)
 
     # Assign a Score: Lower slope = More stability = Higher score
     if OPTIMAL_MIN <= current_temp <= OPTIMAL_MAX:
