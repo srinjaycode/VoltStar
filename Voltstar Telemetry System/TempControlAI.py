@@ -1,28 +1,27 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import pandas as pd
-
-# Function to load temperature data from CSV
-def load_temperature_data(csv_file):
-    # Read CSV file
-    df = pd.read_csv(csv_file)
-    
-    # Convert temperature column to numpy array
-    temperature = df['temperature'].to_numpy()
-    
-    # Create time array with same length as temperature data
-    time = np.arange(0, len(temperature), 1)
-    
-    return time, temperature
 
 # Constants
 OPTIMAL_MIN = 37
 OPTIMAL_MAX = 39
 OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
 
-# Load data from CSV
-time, temperature = load_temperature_data('your_data.csv')
+# Simulated Data: Time (minutes) & Temperature (Celsius)
+time = np.arange(4, 302, 2)  # 149 time steps
+temperature = np.array([22.62, 22.62, 22.62, 22.56, 22.56, 22.56, 22.56, 22.56, 22.5, 22.56, 22.5,
+    22.5, 22.5, 22.56, 22.5, 22.56, 22.56, 22.56, 22.56, 22.56, 22.56, 22.56,
+    22.56, 22.56, 22.56, 22.56, 22.81, 24.06, 24.94, 25.31, 25.44, 25.69, 25.81,
+    26.25, 27.25, 28.19, 28.94, 29.56, 30.12, 30.5, 30.94, 31.25, 31.5, 31.62,
+    31.81, 31.94, 32.06, 32, 31.94, 31.81, 31.75, 31.87, 31.87, 32, 32.19, 32.25,
+    32.31, 32.44, 32.63, 32.88, 33.06, 33.19, 33.13, 33, 32.88, 32.75, 32.5, 32.31,
+    32.19, 31.94, 31.75, 31.62, 31.44, 31.25, 31.37, 31.69, 31.81, 31.81, 31.81,
+    31.75, 31.62, 31.5, 31.37, 31.25, 31.19, 31, 30.81, 30.69, 30.56, 30.44, 30.31,
+    30.25, 30.12, 30.06, 30, 29.87, 29.81, 29.75, 29.62, 29.5, 29.44, 29.31, 29.25,
+    29.19, 29.12, 29.06, 28.94, 28.94, 28.81, 28.75, 28.69, 28.62, 28.56, 28.5,
+    28.37, 28.25, 28.19, 28.12, 28, 27.94, 27.87, 27.75, 27.75, 27.62, 27.62, 27.56,
+    27.44, 27.44, 27.37, 27.25, 27.25, 27.12, 27.06, 27.06, 26.94, 26.87, 26.81,
+    26.75, 26.75, 26.69, 26.62, 26.56, 26.44, 26.44, 26.37, 26.31, 26.25, 26.19, 26.19])
 
 # Normalize Data (0 to 1 for TensorFlow)
 min_temp = min(temperature)
@@ -37,7 +36,6 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(1)  # 1 output (predicted temperature)
 ])
 
-# Rest of your original code remains exactly the same
 # Compile Model
 model.compile(optimizer='adam', loss='mse')
 
@@ -101,7 +99,7 @@ plt.plot(time, predicted_temp, 'r-', label="AI Predicted Temperature")  # Predic
 plt.plot(time, fan_speeds, 'g--', label="Fan Speed (%)")  # Fan speed over time
 plt.axhline(y=OPTIMAL_MIN, color='gray', linestyle='dashed', label="Optimal Min (37°C)")
 plt.axhline(y=OPTIMAL_MAX, color='gray', linestyle='dashed', label="Optimal Max (39°C)")
-plt.xlabel("Time (minutes)")
+plt.xlabel("Time (seconds)")
 plt.ylabel("Temperature (°C) & Fan Speed (%)")
 plt.legend()
 plt.title("AI Fan Control System")
@@ -110,7 +108,7 @@ plt.show()
 # Plot Graph: Stability Score Over Time (Bar Graph)
 plt.figure(figsize=(10, 5))
 plt.bar(time, scores, color='purple', label="Stability Score")
-plt.xlabel("Time (minutes)")
+plt.xlabel("Time (seconds)")
 plt.ylabel("Score (Higher is Better)")
 plt.legend()
 plt.title("AI Learning Stability Score Over Time")
@@ -119,7 +117,7 @@ plt.show()
 # EXTRA Graph: Score with Time (Line Graph)
 plt.figure(figsize=(10, 5))
 plt.plot(time, scores, 'm-o', label="Stability Score Over Time")  # Stability score over time
-plt.xlabel("Time (minutes)")
+plt.xlabel("Time (seconds)")
 plt.ylabel("Score (Higher is Better)")
 plt.legend()
 plt.title("AI Stability Score Over Time (Line Graph)")
