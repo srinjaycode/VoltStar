@@ -1,15 +1,29 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import pandas as pd  # Add pandas for CSV handling
+
+# Function to load temperature data from CSV
+def load_temperature_data(csv_file):
+    # Read CSV file - expecting a column named 'temperature'
+    df = pd.read_csv(csv_file)
+    
+    # Convert temperature column to numpy array
+    temperature = df['temperature'].to_numpy()
+    
+    # Create time array with same length as temperature data
+    time = np.arange(0, len(temperature), 1)
+    
+    return time, temperature
 
 # Constants
 OPTIMAL_MIN = 37
 OPTIMAL_MAX = 39
 OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
 
-# Simulated Data: Time (minutes) & Temperature (Celsius)
-time = np.arange(0, 20, 1)  # 20 time steps
-temperature = np.array([33, 34, 36, 38, 40, 42, 37, 38, 35, 34, 32, 36, 39, 41, 42, 38, 37, 36, 35, 34])
+# Load data from CSV instead of using static array
+# Replace 'your_data.csv' with your actual CSV file name
+time, temperature = load_temperature_data('your_data.csv')
 
 # Normalize Data (0 to 1 for TensorFlow)
 min_temp = min(temperature)
@@ -24,6 +38,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(1)  # 1 output (predicted temperature)
 ])
 
+# Rest of your original code remains exactly the same
 # Compile Model
 model.compile(optimizer='adam', loss='mse')
 
