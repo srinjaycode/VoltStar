@@ -21,7 +21,7 @@ OPTIMAL_MIN = 37
 OPTIMAL_MAX = 39
 OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
 
-# Load data from CSV instead of using static array
+# Load data from CSV
 time, temperature = load_temperature_data('your_data.csv')
 
 # Normalize Data (0 to 1 for TensorFlow)
