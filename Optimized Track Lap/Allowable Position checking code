@@ -9,6 +9,7 @@ def is_position_in_blue_silhouette(image_path, position):
 
     # Get the x and y coordinates from the input position
     x, y = position
+    y = img.height - y
 
     # Check if the x, y coordinates are within the bounds of the image
     if x < 0 or y < 0 or x >= img.width or y >= img.height:
