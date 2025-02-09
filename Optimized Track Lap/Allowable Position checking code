@@ -1,7 +1,7 @@
 from PIL import Image
 import matplotlib.pyplot as plt
 
-def is_position_in_red_silhouette(image_path, position):
+def is_position_in_blue_silhouette(image_path, position):
     # Open the image and convert it to RGBA mode (if not already)
     img = Image.open(image_path).convert("RGBA")
     # Get the pixel data
