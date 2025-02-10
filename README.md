@@ -79,7 +79,8 @@ The project is organized for easy navigation and access:
 This project is licensed under the [MIT License](LICENSE).
 
 ## Contributors
-- **Srinjay Shrinivas Shankar**: Electronics Engineer, Arduino Developer (C++) and 3D Modeling
+- **Srinjay Shrinivas Shankar**: Electronics Engineer, Arduino Developer (C++), Python, 3D Modeler
 - **Ahmed Rizwan**:  Electronics Engineer, Coder.
 - **Yahia Ezzat**: C++ Develper, Arduino Coder.
-- **Abdulhayee Yamin**: Ex Game Dev, C# Developer 
+- **Abdulhayee Yamin**: Ex Game Dev, C# Developer. Python Developer (Tensorflow)
+- **Yousef Saleh**: Python Developer, 3D Modeler
