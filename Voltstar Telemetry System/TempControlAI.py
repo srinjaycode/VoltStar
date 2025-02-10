@@ -2,13 +2,14 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-# Constants
-OPTIMAL_MIN = 37
-OPTIMAL_MAX = 39
+# Set optimal temperature limits
+OPTIMAL_MIN = 25
+OPTIMAL_MAX = 30
 OPTIMAL_TEMP = (OPTIMAL_MIN + OPTIMAL_MAX) / 2
+MIN_FAN_SPEED = 10  # Minimum fan speed
 
-# Simulated Data: Time (minutes) & Temperature (Celsius)
-time = np.arange(4, 302, 2)  # 149 time steps
+# Time and temperature data
+time = np.arange(4, 302, 2)  # Time from 4 to 300 minutes
 temperature = np.array([22.62, 22.62, 22.62, 22.56, 22.56, 22.56, 22.56, 22.56, 22.5, 22.56, 22.5,
     22.5, 22.5, 22.56, 22.5, 22.56, 22.56, 22.56, 22.56, 22.56, 22.56, 22.56,
     22.56, 22.56, 22.56, 22.56, 22.81, 24.06, 24.94, 25.31, 25.44, 25.69, 25.81,
@@ -23,106 +24,106 @@ temperature = np.array([22.62, 22.62, 22.62, 22.56, 22.56, 22.56, 22.56, 22.56, 
     27.44, 27.44, 27.37, 27.25, 27.25, 27.12, 27.06, 27.06, 26.94, 26.87, 26.81,
     26.75, 26.75, 26.69, 26.62, 26.56, 26.44, 26.44, 26.37, 26.31, 26.25, 26.19, 26.19])
 
-# Normalize Data (0 to 1 for TensorFlow)
+# Normalize data
 min_temp = min(temperature)
 max_temp = max(temperature)
 temperature_norm = (temperature - min_temp) / (max_temp - min_temp)
 time_norm = time / max(time)
 
-# Create a Neural Network Model
+# Build neural network model
 model = tf.keras.Sequential([
-    tf.keras.layers.Dense(10, activation='relu', input_shape=[1]),  # 1 input (time)
+    tf.keras.layers.Dense(10, activation='relu', input_shape=[1]),
     tf.keras.layers.Dense(10, activation='relu'),
-    tf.keras.layers.Dense(1)  # 1 output (predicted temperature)
+    tf.keras.layers.Dense(1)
 ])
 
-# Compile Model
+# Compile and train model
 model.compile(optimizer='adam', loss='mse')
-
-# Train Model
 model.fit(time_norm, temperature_norm, epochs=500, verbose=0)
 
-# Predict Future Temperatures
+# Make predictions
 predicted_temp_norm = model.predict(time_norm).flatten()
-predicted_temp = predicted_temp_norm * (max_temp - min_temp) + min_temp  # Convert back to actual scale
+predicted_temp = predicted_temp_norm * (max_temp - min_temp) + min_temp
 
-# Fan Speed Control Logic
-fan_speeds = []  # Store fan speed over time
-fan_speed = 50  # Initial fan speed
-n = 1  # AI-decided multiplier for fan speed changes
+# Fan speed control logic
+fan_speeds = [0]  # Start fan speed with 0
+fan_speed = 0  # Initial fan speed
 
-# Scoring System
-scores = []  # Store scores for each time step
-
+# Adjust fan speed based on temperature
 for i in range(1, len(predicted_temp)):
     current_temp = predicted_temp[i]
     previous_temp = predicted_temp[i - 1]
-    
-    # Compute Difference from Optimal Temp
+
+    # Difference from optimal temperature
     diff = current_temp - OPTIMAL_TEMP
     prev_diff = previous_temp - OPTIMAL_TEMP
 
-    # Compute Slope of Temperature Change
-    slope = abs(current_temp - previous_temp)
+    # Calculate slope
+    slope = current_temp - previous_temp
 
-    # Condition: If temperature is within optimal range and slope is between -0.5 and 0.5
-    if OPTIMAL_MIN <= current_temp <= OPTIMAL_MAX and -0.5 < slope < 0.5:
-        fan_speeds.append(fan_speed)  # Keep fan speed as is
-    else:
-        # AI Decision Making for Fan Speed Change
-        if abs(diff) < abs(prev_diff):
-            fan_speeds.append(fan_speed)  # No change
-        else:
-            # AI Decides n Based on Slope
-            n = min(5, max(1, int(slope * 5)))  # n ranges from 1 to 5, based on slope
-            
-            if diff > 0:
-                fan_speed += 10 * n  # Increase fan speed if temp is too high
-            else:
-                fan_speed -= 10 * n  # Decrease fan speed if temp is too low
-
-            fan_speed = max(0, min(100, fan_speed))  # Ensure fan speed stays 0-100%
-            fan_speeds.append(fan_speed)
-
-    # Assign a Score: Lower slope = More stability = Higher score
+    # Adjust fan speed
     if OPTIMAL_MIN <= current_temp <= OPTIMAL_MAX:
-        score = max(0, 10 - (slope * 10))  # High score for small slope
+        if abs(slope) < 0.1:
+            fan_speed = max(MIN_FAN_SPEED, fan_speed * (1 - 0.2))  # Gradually reduce fan speed
+        else:
+            fan_speed = max(MIN_FAN_SPEED, min(100, fan_speed + slope * 50 * 0.2))
+    elif current_temp > OPTIMAL_MAX:
+        fan_speed = min(100, fan_speed + 0.2 * 100)  # Increase fan speed if too hot
     else:
-        score = 0  # No score if outside optimal range
-    
-    scores.append(score)
+        fan_speed = max(MIN_FAN_SPEED, fan_speed - 0.2 * 100)  # Decrease fan speed if too cold
 
-# Add initial fan speed and score for plotting
-fan_speeds.insert(0, 50)
-scores.insert(0, 0)
+    fan_speeds.append(fan_speed)
 
-# Plot Graph: AI Predicted Temperature and Fan Speed
-plt.figure(figsize=(10, 5))
-plt.plot(time, temperature, 'bo-', label="Actual Temperature")  # Actual temp data
-plt.plot(time, predicted_temp, 'r-', label="AI Predicted Temperature")  # Predicted temp
-plt.plot(time, fan_speeds, 'g--', label="Fan Speed (%)")  # Fan speed over time
-plt.axhline(y=OPTIMAL_MIN, color='gray', linestyle='dashed', label="Optimal Min (37°C)")
-plt.axhline(y=OPTIMAL_MAX, color='gray', linestyle='dashed', label="Optimal Max (39°C)")
-plt.xlabel("Time (seconds)")
-plt.ylabel("Temperature (°C) & Fan Speed (%)")
-plt.legend()
-plt.title("AI Fan Control System")
+# --- Calculate the percentages ---
+# Percentage of time spent within the optimal temperature range
+optimal_range_count = sum(1 for temp in predicted_temp if OPTIMAL_MIN <= temp <= OPTIMAL_MAX)
+total_time = len(predicted_temp)
+time_in_optimal_range = (optimal_range_count / total_time) * 100
+
+# Percentage based on the slopes
+slopes_in_optimal_range = [predicted_temp[i] - predicted_temp[i - 1] for i in range(1, len(predicted_temp))]
+optimal_slopes = [slope for i, slope in enumerate(slopes_in_optimal_range) if OPTIMAL_MIN <= predicted_temp[i + 1] <= OPTIMAL_MAX]
+average_slope = sum(optimal_slopes) / len(optimal_slopes) if optimal_slopes else 0
+slope_percentage = (1 - (abs(average_slope) / max(abs(min(slopes_in_optimal_range)), abs(max(slopes_in_optimal_range))))) * 100
+
+# Plot combined graph (temperature and fan speed)
+fig, ax1 = plt.subplots(figsize=(10, 5))
+
+# Plot Temperature on first y-axis
+ax1.set_xlabel("Time (minutes)")
+ax1.set_ylabel("Temperature (°C)", color='tab:blue')
+ax1.plot(time, temperature, 'bo-', label="Actual Temperature")
+ax1.plot(time, predicted_temp, 'r-', label="AI Predicted Temperature")
+ax1.axhline(y=OPTIMAL_MIN, color='gray', linestyle='dashed', label="Optimal Min (25°C)")
+ax1.axhline(y=OPTIMAL_MAX, color='gray', linestyle='dashed', label="Optimal Max (30°C)")
+ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+# Create second y-axis for Fan Speed
+ax2 = ax1.twinx()
+ax2.set_ylabel("Fan Speed (%)", color='tab:green')
+ax2.plot(time, fan_speeds, 'g--', label="Fan Speed (%)")
+ax2.tick_params(axis='y', labelcolor='tab:green')
+
+# Legends for both axes
+fig.tight_layout()  # To ensure everything fits without overlap
+fig.legend(loc="upper left", bbox_to_anchor=(0.1, 1), bbox_transform=ax1.transAxes)
+
+plt.title("AI Temperature Prediction and Fan Speed Control")
 plt.show()
 
-# Plot Graph: Stability Score Over Time (Bar Graph)
-plt.figure(figsize=(10, 5))
-plt.bar(time, scores, color='purple', label="Stability Score")
-plt.xlabel("Time (seconds)")
-plt.ylabel("Score (Higher is Better)")
-plt.legend()
-plt.title("AI Learning Stability Score Over Time")
+# --- Plot the Pie Charts ---
+# Pie chart for time in optimal range
+plt.figure(figsize=(6, 6))
+time_labels = ['Time in Optimal Range', f'Time Outside Optimal Range']
+time_sizes = [time_in_optimal_range, 100 - time_in_optimal_range]
+plt.pie(time_sizes, labels=time_labels, autopct='%1.1f%%', startangle=90, colors=['#66b3ff', '#ff6666'])
+plt.title("Time in Optimal Temperature Range")
 plt.show()
 
-# EXTRA Graph: Score with Time (Line Graph)
-plt.figure(figsize=(10, 5))
-plt.plot(time, scores, 'm-o', label="Stability Score Over Time")  # Stability score over time
-plt.xlabel("Time (seconds)")
-plt.ylabel("Score (Higher is Better)")
-plt.legend()
-plt.title("AI Stability Score Over Time (Line Graph)")
+# Pie chart for slope percentage
+plt.figure(figsize=(6, 6))
+slope_labels = ['Stability', f'Instability']
+slope_sizes = [slope_percentage, 100 - slope_percentage]
+plt.pie(slope_sizes, labels=slope_labels, autopct='%1.1f%%', startangle=90, colors=['#66ff66', '#ffcc66'])
+plt.title("Slope Stability Percentage")
 plt.show()
