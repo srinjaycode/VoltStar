@@ -31,7 +31,7 @@ def is_position_in_blue_silhouette(image_path, position):
 
 # Example usage
 
-image_path = "optimized img.png"
+image_path = "optimized-img.png"
 
 position = (1000, 60)
 result = is_position_in_blue_silhouette(image_path, position)
@@ -82,11 +82,35 @@ def turnleft():
     turningangle -= 1.40625
     direction += 1.40625
 
-action = 0 
+action = [0 for c in range(1970)] 
 
 while action < len(path):
    path[action] = random.randint(0, 4)
 
    if path[action] == 1 and turningangle == 0:
+       accelerate()
        position[0] += (velocity + 0.217) * math.cos(direction)
        position[1] += (velocity + 0.217) * math.sin(direction)
+   if path[action] == 2 and turningangle == 0:
+       decelerate()
+       position[0] += (velocity - 0.217) * math.cos(direction)
+       position[1] += (velocity - 0.217) * math.sin(direction)
+
+
+   if path[action] == 3:
+       turnright()
+   if path[action] == 4:
+       turnleft()
+
+
+
+   if turningangle != 0:
+       d = 360 * (velocity/(2*math.pi *(1.6/math.tan(turningangle))))
+       b = math.sqrt(2*(1.6/ math.tan(turningangle))*(1-math.cos(d)))
+       baseangle = (90 - ((180-d)/2))
+       position[0] = b * math.cos(direction-baseangle)
+       position[1] = b * math.sin(direction-baseangle)
+   if is_position_in_blue_silhouette(image_path, position):
+       action += 1
+   else:
+       action -= 1 
