@@ -31,7 +31,7 @@ def is_position_in_blue_silhouette(image_path, position):
 
 # Example usage
 
-image_path = "optimized-img.png"
+image_path = "C:\Users\Fusion 360\Documents\yousefsaleh\image_18_2_optimized.png"
 
 position = (1000, 60)
 result = is_position_in_blue_silhouette(image_path, position)
@@ -44,6 +44,7 @@ acceleration = 0
 turningangle = 0
 direction = 180
 path = []
+alive = []
 # positives are right negatives are left 
 
 def accelerate():
@@ -86,6 +87,9 @@ action = [0 for c in range(1970)]
 
 while action < len(path):
    path[action] = random.randint(0, 4)
+   if previous[0] == False:
+       path[action] == previous [1]+ 1
+       
 
    if path[action] == 1 and turningangle == 0:
        accelerate()
@@ -110,7 +114,13 @@ while action < len(path):
        baseangle = (90 - ((180-d)/2))
        position[0] = b * math.cos(direction-baseangle)
        position[1] = b * math.sin(direction-baseangle)
+       direction -= d
    if is_position_in_blue_silhouette(image_path, position):
        action += 1
+       previous = [True, path[action]]
    else:
-       action -= 1 
+       previous = [False, path[action]]
+
+    
+
+       
