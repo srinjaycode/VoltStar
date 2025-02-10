@@ -1,5 +1,7 @@
 from PIL import Image
 import matplotlib.pyplot as plt
+import math
+import random
 
 def is_position_in_blue_silhouette(image_path, position):
     # Open the image and convert it to RGBA mode (if not already)
@@ -21,15 +23,70 @@ def is_position_in_blue_silhouette(image_path, position):
 
     # blue cus the track is blue in pic
     r, g, b, a = pixel
-    # You can adjust the threshold if necessary to determine a "red" pixel
+
     if r < 90 and g > 130 and b > 120:  # Modify threshold values as needed
         return True
     return False
 
 
-track = []
-image_path = "the track image its in the file.png"
-#example pos
-position = (243, 613)
-result = is_position_in_red_silhouette(image_path, position)
+# Example usage
+
+image_path = "optimized img.png"
+
+position = (1000, 60)
+result = is_position_in_blue_silhouette(image_path, position)
 print(f"position {position} is inside the silhouette: {result}")
+
+
+
+velocity = 0        
+acceleration = 0
+turningangle = 0
+direction = 180
+path = []
+# positives are right negatives are left 
+
+def accelerate():
+    global acceleration
+    global velocity
+    global turningangle
+    global position
+    velocity += 0.434
+
+
+
+def decelerate():
+    global acceleration
+    global velocity
+    global turningangle
+    global position
+    velocity -= 0.434
+
+
+
+def turnright():
+    global turningangle
+    global acceleration
+    global velocity
+    global position
+    global direction
+    turningangle += 1.40625
+    direction -= 1.40625
+
+def turnleft():
+    global turningangle
+    global acceleration
+    global velocity
+    global position
+    global direction
+    turningangle -= 1.40625
+    direction += 1.40625
+
+action = 0 
+
+while action < len(path):
+   path[action] = random.randint(0, 4)
+
+   if path[action] == 1 and turningangle == 0:
+       position[0] += (velocity + 0.217) * math.cos(direction)
+       position[1] += (velocity + 0.217) * math.sin(direction)
