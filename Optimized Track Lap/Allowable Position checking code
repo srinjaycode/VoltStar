@@ -30,8 +30,8 @@ def is_position_in_blue_silhouette(image_path, position):
 
 
 # Example usage
+image_path = r"C:\Users\Fusion 360\Documents\yousefsaleh\image_18_2_optimized.png"
 
-image_path = "C:\Users\Fusion 360\Documents\yousefsaleh\image_18_2_optimized.png"
 
 position = (1000, 60)
 result = is_position_in_blue_silhouette(image_path, position)
@@ -120,6 +120,9 @@ while action < len(path):
        previous = [True, path[action]]
    else:
        previous = [False, path[action]]
+   if position[1] == (53/45) * position - 337:
+       position[0] = 797
+       position[1] = 690
 
     
 
