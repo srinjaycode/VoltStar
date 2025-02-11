@@ -30,9 +30,16 @@ def is_position_in_blue_silhouette(image_path, position):
 
 # Example usage
 image_path = "/Users/mac/Downloads/image_18_2_optimized.png"
+img = Image.open(image_path)
 
+fig, ax = plt.subplots()
+ax.imshow(img)
 
-position = (1000, 60)
+def plot_position(position):
+    ax.scatter(position[0], img.height - position[1], color='red', s=20)
+    plt.pause(0.01)
+
+position = [1000, 60]
 result = is_position_in_blue_silhouette(image_path, position)
 print(f"position {position} is inside the silhouette: {result}")
 
@@ -42,7 +49,7 @@ velocity = 0
 acceleration = 0
 turningangle = 0
 direction = 180
-path = [0 for c in range(1970)]
+path = [1 for c in range(1970)]
 alive = []
 # positives are right negatives are left 
 
@@ -85,18 +92,14 @@ def turnleft():
 action = 0
 
 while action < len(path):
-   path[action] = random.randint(0, 4)
+
    if is_position_in_blue_silhouette(image_path, position):
-       action += 1
        previous = [True, path[action], position]
    else:
        previous = [False, path[action], position]
+       
    
-   if previous[0] == False:
-       path[action] == previous [1]+ 1
-   if path[action] ==  5:
-       path[action] = 0
-       action -= 1
+
    if path[action] == 1 and turningangle == 0:
        accelerate()
        position[0] += (velocity + 0.217) * math.cos(direction)
@@ -116,23 +119,34 @@ while action < len(path):
 
    if turningangle != 0:
        d = 360 * (velocity/(2*math.pi *(1.6/math.tan(turningangle))))
-       b = math.sqrt(2*(1.6/ math.tan(turningangle))*(1-math.cos(d)))
+       b = math.sqrt(abs(2*(1.6/ math.tan(turningangle))*(1-math.cos(d))))
        baseangle = (90 - ((180-d)/2))
        position[0] = b * math.cos(direction-baseangle)
        position[1] = b * math.sin(direction-baseangle)
        direction -= d
 
-   if round(position[1], -1) == (3/2) * round(position[0], -1) - 170 and 610 < position < 753:
+   if round(position[1], -1) == (3/2) * round(position[0], -1) - 170 and 610 < position[0] < 753:
        position[0] = 797
        position[1] = 690
    if 1050 < position[0] < 1105 and 5 < position[1] < 75:
        print("it did one lap gang")
        break
+   if previous[0] == False:
+       position = previous[2]
+       path[action] == previous [1]+ 1
+   if path[action] ==  5:
+       path[action] = 0
+       action -= 1
    if position == previous[2]:
        previous[0] = False
    print (position)
    print(action)
+   plot_position(position)
+   if not is_position_in_blue_silhouette(image_path, position):
+       position = previous[2]
 # it doesnt work rn
+
+plt.show()
 
     
 
