@@ -2,6 +2,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import math
 import random
+import copy
 
 def is_position_in_blue_silhouette(image_path, position):
     # Open the image and convert it to RGBA mode (if not already)
@@ -94,9 +95,9 @@ action = 0
 while action < len(path):
 
    if is_position_in_blue_silhouette(image_path, position):
-       previous = [True, path[action], position]
+       previous = [True, copy.deepcopy(path[action]), copy.deepcopy(position)]
    else:
-       previous = [False, path[action], position]
+       previous = [False, copy.deepcopy(path[action]), copy.deepcopy(position)]
        
    
 
@@ -131,9 +132,9 @@ while action < len(path):
    if 1050 < position[0] < 1105 and 5 < position[1] < 75:
        print("it did one lap gang")
        break
-   if previous[0] == False:
-       position = previous[2]
-       path[action] == previous [1]+ 1
+   if previous[0] == False or not is_position_in_blue_silhouette(image_path, position):
+       position = copy.deepcopy(previous[2])
+       path[action] == copy.deepcopy(previous [1])+ 1
    if path[action] ==  5:
        path[action] = 0
        action -= 1
@@ -142,8 +143,9 @@ while action < len(path):
    print (position)
    print(action)
    plot_position(position)
+   print(previous)
    if not is_position_in_blue_silhouette(image_path, position):
-       position = previous[2]
+       position = copy.deepcopy(previous[2])
 # it doesnt work rn
 
 plt.show()
