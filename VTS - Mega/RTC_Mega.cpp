@@ -13,12 +13,10 @@ void initRTC() {
     }
 }
 
-void getRTC() {
+String getTimeStamp() {
     RtcDateTime now = Rtc.GetDateTime();
-    char datestring[20];
-    snprintf_P(datestring, 20, PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-               now.Month(), now.Day(), now.Year(),
+    char timeString[9];  // "HH:MM:SS" is 8 characters + null terminator
+    snprintf_P(timeString, 9, PSTR("%02u:%02u:%02u"),
                now.Hour(), now.Minute(), now.Second());
-    Serial.print("RTC,");
-    Serial.println(datestring);
+    return String(timeString);
 }
