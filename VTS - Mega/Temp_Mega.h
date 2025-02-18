@@ -20,6 +20,7 @@ extern bool controllerTempConnected;
 extern bool batteryTempConnected;
 
 void initTemperatureSensors();
-void getTemperature();
+float getControllerTemperature();
+float getBatteryTemperature();
 
 #endif
