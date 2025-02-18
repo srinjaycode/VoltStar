@@ -35,11 +35,11 @@ void loop() {
 }
 
 void parseData(String data) {
-  if (data.startsWith("S")) {
+  if (data.startsWith("V")) {
     velocity = data.substring(1).toInt();
-  } else if (data.startsWith("TB")) {
+  } else if (data.startsWith("BT")) {
     batteryTemp = data.substring(2).toInt();
-  } else if (data.startsWith("TC")) {
+  } else if (data.startsWith("CT")) {
     controllerTemp = data.substring(2).toInt();
   }
 }
