@@ -1,25 +1,29 @@
 #include "RTC_Module.h"
 
-ThreeWire myWire(RTC_DAT, RTC_CLK, RTC_RST);
-RtcDS1302<ThreeWire> Rtc(myWire);
+RTCZero rtc;
 
 void initRTC() {
-    Rtc.Begin();
-    if (!Rtc.IsDateTimeValid()) {
-        Serial.println("ERROR: RTC not configured!");
-        Rtc.SetDateTime(RtcDateTime(__DATE__, __TIME__));
-    } else {
-        Serial.println("RTC initialized successfully");
-    }
+    Serial.println("Initializing built-in RTC...");
+
+    rtc.begin(); // Start RTC
+
+    // SEt to current time of upload
+    rtc.setHours(15);
+    rtc.setMinutes(42);
+    rtc.setSeconds(0);
+    rtc.setDay(18);
+    rtc.setMonth(2);
+    rtc.setYear(25); 
+
+    Serial.println("RTC initialized successfully.");
 }
 
 void getRTC() {
-    RtcDateTime now = Rtc.GetDateTime();
-
     char datestring[20];
-    snprintf_P(datestring, 20, PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-               now.Month(), now.Day(), now.Year(),
-               now.Hour(), now.Minute(), now.Second());
-    Serial.println("\n[TIME]");
+    snprintf(datestring, sizeof(datestring), "%02u/%02u/20%02u %02u:%02u:%02u",
+             rtc.getMonth(), rtc.getDay(), rtc.getYear(),
+             rtc.getHours(), rtc.getMinutes(), rtc.getSeconds());
+
+    Serial.print("RTC,");
     Serial.println(datestring);
 }
