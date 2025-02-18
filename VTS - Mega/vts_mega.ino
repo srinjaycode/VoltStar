@@ -3,7 +3,7 @@
 #include "RTC_Module.h"
 #include <SoftwareSerial.h>
 
-SoftwareSerial LoRa(2, 3);  // RX, TX for LoRa
+SoftwareSerial LoRa(2, 3);
 
 void setup() {
     Serial.begin(115200);
@@ -26,48 +26,89 @@ void setup() {
 
     initTemperatureSensors();
 
-    // Set up LoRa Module before sending data
-    LoRa.begin(115200);       // LoRa Module at 115200 baud
-    delay(5000);              // Allow module to stabilize
+    LoRa.begin(115200);
+    delay(5000);
     Serial.println("LoRa Transmitter Initialized");
 
-    // Set up LoRa Module commands
     LoRa.println("AT+ADDRESS=1");
     LoRa.println("AT+PARAMETER=8,7,1,12");
-    LoRa.println("AT+BAND=868500000");  // Set frequency to 433 MHz
-    LoRa.println("AT+MODE=0");          // Set LoRa module to "send" mode
-    delay(5000);  // Allow some time for commands to take effect
+    LoRa.println("AT+BAND=868500000");
+    LoRa.println("AT+MODE=0");
+    delay(5000);
+
+    Serial1.begin(115200);
+    delay(5000);
+    Serial.println("UART1 Initialized");
 
     Serial.println("========== Setup Complete ==========\n");
 }
 
 void loop() {
-    // Get timestamp
     String timestamp = getTimeStamp();
 
-    // Get sensor data
     float controllerTemp = getControllerTemperature();
     float batteryTemp = getBatteryTemperature();
-    float speed = getSpeed();  
+    float speed = getSpeed();
 
-    // Create packet headers and send data via LoRa
+    sendUARTData("CT", controllerTemp, timestamp);
+    sendUARTData("BT", batteryTemp, timestamp);
+    sendUARTData("V", speed, timestamp);
+
     sendLoRaData("CT", controllerTemp, timestamp);
     sendLoRaData("BT", batteryTemp, timestamp);
-    sendLoRaData("TS", timestamp, "");
     sendLoRaData("V", speed, timestamp);
 
-    delay(3000);  
+    delay(3000);
+}
+
+void sendUARTData(String header, float data, String timestamp) {
+    String packet = header + ":" + String(data) + "," + "TS:" + timestamp;
+    Serial1.println(packet);
+    Serial.print("Sent via UART1: ");
+    Serial.println(packet);
+}
+
+void sendUARTData(String header, String data, String timestamp) {
+    String packet = header + ":" + data + "," + "TS:" + timestamp;
+    Serial1.println(packet);
+    Serial.print("Sent via UART1: ");
+    Serial.println(packet);
 }
 
 void sendLoRaData(String header, float data, String timestamp) {
     String packet = header + ":" + String(data) + "," + "TS:" + timestamp;
-    LoRa.println("AT+SEND=2,15," + packet);  
-    Serial.println("Sent: " + packet);
+    int length = packet.length();
+    LoRa.print("AT+SEND=2," + String(length) + "," + packet);
+    Serial.print("Sent via LoRa: ");
+    Serial.println(packet);
+
+    delay(1000);
+
+    while (LoRa.available()) {
+        String response = LoRa.readStringUntil('\n');
+        if (response.indexOf("+OK") != -1) {
+            Serial.println("LoRa: Message sent successfully.");
+        } else {
+            Serial.println("LoRa: Failed to send message.");
+        }
+    }
 }
 
 void sendLoRaData(String header, String data, String timestamp) {
     String packet = header + ":" + data + "," + "TS:" + timestamp;
-    LoRa.println("AT+SEND=2,15," + packet);  
-    Serial.println("Sent: " + packet);
-}
+    int length = packet.length();
+    LoRa.print("AT+SEND=2," + String(length) + "," + packet);
+    Serial.print("Sent via LoRa: ");
+    Serial.println(packet);
 
+    delay(1000);
+
+    while (LoRa.available()) {
+        String response = LoRa.readStringUntil('\n');
+        if (response.indexOf("+OK") != -1) {
+            Serial.println("LoRa: Message sent successfully.");
+        } else {
+            Serial.println("LoRa: Failed to send message.");
+        }
+    }
+}
