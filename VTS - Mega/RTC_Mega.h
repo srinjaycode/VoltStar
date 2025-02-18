@@ -14,6 +14,6 @@ extern ThreeWire myWire;
 extern RtcDS1302<ThreeWire> Rtc;
 
 void initRTC();
-void getRTC();
+String getTimeStamp();
 
 #endif
