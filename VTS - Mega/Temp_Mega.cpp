@@ -31,22 +31,18 @@ void initTemperatureSensors() {
     }
 }
 
-void getTemperature() {
-    Serial.print("TEMP,");
-
-    if (controllerTempConnected) {
-        controllerSensor.requestTemperatures();
-        Serial.print(controllerSensor.getTempC(controllerThermometer));
-    } else {
-        Serial.print("NC");
+float getControllerTemperature() {
+    if (!controllerTempConnected) {
+        return -1000.0;  // Return a clearly invalid temperature
     }
+    controllerSensor.requestTemperatures();
+    return controllerSensor.getTempC(controllerThermometer);
+}
 
-    Serial.print(",");
-
-    if (batteryTempConnected) {
-        batterySensor.requestTemperatures();
-        Serial.println(batterySensor.getTempC(batteryThermometer));
-    } else {
-        Serial.println("NC");
+float getBatteryTemperature() {
+    if (!batteryTempConnected) {
+        return -1000.0;  // Return a clearly invalid temperature
     }
+    batterySensor.requestTemperatures();
+    return batterySensor.getTempC(batteryThermometer);
 }
