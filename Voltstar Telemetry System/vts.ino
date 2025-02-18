@@ -1,15 +1,19 @@
 #include "IMU.h"
 #include "Temperature.h"
 #include "RTC_Module.h"
+#include "GPS_Module.h"  
 
 void setup() {
     Serial.begin(115200);
-    Wire.begin();  // Use default Mega SDA (20) and SCL (21)
+    Wire.begin();
 
     Serial.println("\n========== System Initialization ==========");
 
     // Initialize RTC
     initRTC();
+
+    // Initialize GPS
+    initGPS();
 
     // Initialize MPU6050
     if (!mpu.begin()) {
@@ -33,6 +37,7 @@ void loop() {
     Serial.println("\n-------------- New Reading --------------");
 
     getRTC();
+    getGPS();  
 
     if (controllerTempConnected || batteryTempConnected) {
         getTemperature();
