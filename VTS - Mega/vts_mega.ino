@@ -48,7 +48,7 @@ void loop() {
     // Get sensor data
     float controllerTemp = getControllerTemperature();
     float batteryTemp = getBatteryTemperature();
-    float speed = getIMU();  
+    float speed = getSpeed();  
 
     // Create packet headers and send data via LoRa
     sendLoRaData("CT", controllerTemp, timestamp);
