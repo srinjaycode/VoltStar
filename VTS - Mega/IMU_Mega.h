@@ -14,6 +14,6 @@ extern float axFiltered, ayFiltered, azFiltered;
 extern bool mpuConnected;
 
 void calibrateSensor();
-void getIMU();
+float getSpeed();
 
 #endif
