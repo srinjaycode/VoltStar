@@ -1,56 +1,48 @@
 #include "IMU.h"
-#include "KalmanFilter.h"
+#include "KalmanFilter.h" // Use the existing Kalman filter
 
-Adafruit_MPU6050 mpu;
-float axOffset = 0, ayOffset = 0, azOffset = 0;
-bool mpuConnected = false;
 float axFiltered = 0, ayFiltered = 0, azFiltered = 0;
-const float gravity = 9.81;
+bool imuConnected = false;
 const float alpha = 0.05;  // Low-pass filter
 
-void calibrateSensor() {
-    Serial.println("Calibrating MPU6050...");
-    float axSum = 0, aySum = 0, azSum = 0;
-    int numSamples = 500;
+void initializeIMU() {
+    Serial.println("Initializing built-in IMU...");
 
-    for (int i = 0; i < numSamples; i++) {
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
-        axSum += a.acceleration.x;
-        aySum += a.acceleration.y;
-        azSum += a.acceleration.z;
-        delay(10);
+    if (!IMU.begin()) {
+        Serial.println("Failed to initialize IMU!");
+        imuConnected = false;
+    } else {
+        Serial.println("IMU initialized successfully.");
+        imuConnected = true;
     }
-
-    axOffset = axSum / numSamples;
-    ayOffset = aySum / numSamples;
-    azOffset = azSum / numSamples;
-    Serial.println("Calibration complete!");
 }
 
 void getIMU() {
-    if (!mpuConnected) {
-        Serial.println("MPU6050 not connected!");
+    if (!imuConnected) {
+        Serial.println("IMU not connected!");
         return;
     }
 
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+    float ax, ay, az;
 
-    // Apply Kalman filter and offset correction
-    float ax = kalmanFilter(a.acceleration.x - axOffset);
-    float ay = kalmanFilter(a.acceleration.y - ayOffset);
-    float az = kalmanFilter(a.acceleration.z - azOffset);
+    if (IMU.accelerationAvailable()) {
+        IMU.readAcceleration(ax, ay, az);
 
-    // Apply low-pass filter
-    axFiltered = alpha * ax + (1 - alpha) * axFiltered;
-    ayFiltered = alpha * ay + (1 - alpha) * ayFiltered;
-    azFiltered = alpha * az + (1 - alpha) * azFiltered;
+        // Apply Kalman filter
+        ax = kalmanFilter(ax);
+        ay = kalmanFilter(ay);
+        az = kalmanFilter(az);
 
-    Serial.print("IMU Data - Ax: ");
-    Serial.print(axFiltered);
-    Serial.print(" Ay: ");
-    Serial.print(ayFiltered);
-    Serial.print(" Az: ");
-    Serial.println(azFiltered);
+        // Apply low-pass filter
+        axFiltered = alpha * ax + (1 - alpha) * axFiltered;
+        ayFiltered = alpha * ay + (1 - alpha) * ayFiltered;
+        azFiltered = alpha * az + (1 - alpha) * azFiltered;
+
+        Serial.print("IMU Data - Ax: ");
+        Serial.print(axFiltered);
+        Serial.print(" Ay: ");
+        Serial.print(ayFiltered);
+        Serial.print(" Az: ");
+        Serial.println(azFiltered);
+    }
 }
