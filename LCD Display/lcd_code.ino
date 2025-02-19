@@ -6,54 +6,80 @@
 
 MCUFRIEND_kbv tft;
 
-float controllerTemp = 0.0, batteryTemp = 0.0;  // Variables to hold the temperature values
+float controllerTemp = 0.0, batteryTemp = 0.0;  // Variables to hold temperature values
 
 void setup() {
-    Serial.begin(115200);       // Initialize Serial monitor for debugging
+    Serial.begin(115200);  // Serial Monitor Debugging
     uint16_t ID = tft.readID();
-    tft.begin(ID);              // Initialize TFT display
-    tft.setRotation(3);         // Set rotation of TFT screen
-    tft.fillScreen(0x0000);     // Clear the screen
+    tft.begin(ID);
+    tft.setRotation(3);
+    tft.fillScreen(0x0000);
+
+    Serial.println("\n========== UNO SYSTEM READY ==========");
+    Serial.println("[INFO] Waiting for UART data from Mega...");
 }
 
 void loop() {
-    if (Serial.available() > 0) {  // Check if data is available from Mega
-        String data = Serial.readStringUntil('\n');   // Read data until newline
-        Serial.println("Received: " + data);          // Debugging print
-        
-        parseData(data);  // Parse the data for temperature values
-        updateDisplay();   // Update the display with the new values
-    }
-}
+    if (Serial.available() > 0) {  
+        String data = Serial.readStringUntil('\n');  
+        Serial.print("[DEBUG] Received Data: ");
+        Serial.println(data);
 
-void parseData(String data) {
-    // Format expected: "TYPE:VALUE" (e.g., "CT:24.63" or "BT:22.10")
-    int colonPos = data.indexOf(':');  // Find the position of the colon
-    if (colonPos != -1) {  // If a colon exists, parse the data
-        String type = data.substring(0, colonPos);  // Extract type (e.g., "CT" or "BT")
-        String value = data.substring(colonPos + 1); // Extract value (e.g., "24.63")
-        float floatValue = value.toFloat();           // Convert to float
-
-        if (type == "CT") {
-            controllerTemp = floatValue;  // Store the controller temperature
-        } else if (type == "BT") {
-            batteryTemp = floatValue;    // Store the battery temperature
+        if (data.length() > 0) {
+            parseData(data);  // Parse the received data
+        } else {
+            Serial.println("[ERROR] Empty data received!");
         }
     }
 }
 
+void parseData(String data) {
+    if (!data.startsWith("CT:") && !data.startsWith("BT:") && !data.startsWith("V:")) {
+        Serial.println("[ERROR] Invalid packet format: " + data);
+        return;
+    }
+
+    int colonPos = data.indexOf(':');  
+    int commaPos = data.indexOf(',');  
+
+    if (colonPos == -1 || commaPos == -1) {
+        Serial.println("[ERROR] Malformed data packet: " + data);
+        return;
+    }
+
+    String type = data.substring(0, colonPos);
+    String value = data.substring(colonPos + 1, commaPos);
+    float floatValue = value.toFloat();
+
+    if (type == "CT") {
+        controllerTemp = floatValue;
+    } else if (type == "BT") {
+        batteryTemp = floatValue;
+    } else {
+        Serial.println("[ERROR] Unrecognized type: " + type);
+        return;
+    }
+
+    Serial.print("[INFO] Parsed: ");
+    Serial.print(type);
+    Serial.print(" = ");
+    Serial.println(floatValue, 2);
+
+    updateDisplay();
+}
+
 void updateDisplay() {
-    tft.fillScreen(0x0000);  // Clear screen
-    
-    // Display controller temperature (with 1 decimal place)
+    tft.fillScreen(0x0000);
+
     tft.setTextSize(7);
     tft.setTextColor(0xFFDF00);
     tft.setCursor(120, 100);
     tft.print("CT: " + String(controllerTemp, 1) + "C");
 
-    // Display battery temperature (with 1 decimal place)
     tft.setTextSize(5);
     tft.setTextColor(0xFFFF);
     tft.setCursor(120, 220);
     tft.print("BT: " + String(batteryTemp, 1) + "C");
+
+    Serial.println("[INFO] Display Updated");
 }
