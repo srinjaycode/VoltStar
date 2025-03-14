@@ -1,0 +1,68 @@
+
+import requests
+import os
+import time
+from google import genai
+import pygame  # For playing audio
+
+# API Keys
+GEMINI_API_KEY = "AIzaSyDU8Tumt4Exey92UeL6OmMoz7ZZVXqhAPQ"  # Set this in your environment
+ELEVEN_LABS_API_KEY = "sk_9c83348aa1907eac3425150be0f454e592053f74accb13bc" # Set this in your environment
+
+if not GEMINI_API_KEY:
+    raise ValueError("Google Gemini API key is missing.")
+if not ELEVEN_LABS_API_KEY:
+    raise ValueError("Eleven Labs API key is missing.")
+
+HEADERS = {"x-api-key": GEMINI_API_KEY}
+genai_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Initial values
+temp = "0 C"
+speed = "0 km/h"
+position = [0, 0]
+
+def whatwouldmaasay():
+    """Generate an extremely aggressive, fast-talking, nagging AI mother response."""
+    response = genai_client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=(
+            f"You are an extremely angry and overprotective mother. You are furious, impatient, and always yelling. "
+            f"You talk extremely fast, interrupt often, and demand immediate action. "
+            f"You have a GPS and thermometer on your kid, which reads: "
+            f"Position: {position}, Speed: {speed}, Temperature: {temp}. "
+            f"Use this data to SCREAM and NAG in MAX 12 WORDS!"
+        )
+    )
+    return response.text.strip()
+
+def text_to_speech(text):
+    """Convert text to speech using Eleven Labs API."""
+    url = "https://api.elevenlabs.io/v1/text-to-speech/e32mynCa5wxYhGWUoxsr"  
+    headers = {
+        "Content-Type": "application/json",
+        "xi-api-key": ELEVEN_LABS_API_KEY,
+    }
+    data = {
+        "text": text,
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.7
+        }
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+    if response.status_code == 200:
+        with open("mom_voice.mp3", "wb") as f:
+            f.write(response.content)
+        print("Audio saved as mom_voice.mp3")
+    else:
+        print("Error:", response.text)
+
+
+
+# Generate, convert, and play AI mom’s voice
+nagging_text = whatwouldmaasay()
+print("AI Mom says:", nagging_text)
+text_to_speech(nagging_text)
+
