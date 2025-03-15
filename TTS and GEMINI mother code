@@ -14,10 +14,11 @@ if not GEMINI_API_KEY:
 if not ELEVEN_LABS_API_KEY:
     raise ValueError("Eleven Labs API key is missing.")
 
+# Google Gemini AI Setup
 HEADERS = {"x-api-key": GEMINI_API_KEY}
 genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Initial values
+# Initial sensor values
 temp = "0 C"
 speed = "0 km/h"
 position = [0, 0]
@@ -37,8 +38,8 @@ def whatwouldmaasay():
     return response.text.strip()
 
 def text_to_speech(text):
-    """Convert text to speech using Eleven Labs API."""
-    url = "https://api.elevenlabs.io/v1/text-to-speech/e32mynCa5wxYhGWUoxsr"  
+    """Convert text to speech using Eleven Labs API and play immediately."""
+    url = "https://api.elevenlabs.io/v1/text-to-speech/e32mynCa5wxYhGWUoxsr"  # Replace with actual voice ID
     headers = {
         "Content-Type": "application/json",
         "xi-api-key": ELEVEN_LABS_API_KEY,
@@ -53,16 +54,24 @@ def text_to_speech(text):
 
     response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
-        with open("mom_voice.mp3", "wb") as f:
+        audio_path = "mom_voice.mp3"
+        with open(audio_path, "wb") as f:
             f.write(response.content)
         print("Audio saved as mom_voice.mp3")
+
+        # Initialize pygame mixer and play the file
+        pygame.mixer.init()
+        pygame.mixer.music.load(audio_path)
+        pygame.mixer.music.play()
+
+        # Wait until the audio finishes playing
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.1)
+
     else:
         print("Error:", response.text)
 
-
-
-# Generate, convert, and play AI mom’s voice
-nagging_text = whatwouldmaasay()
-print("AI Mom says:", nagging_text)
-text_to_speech(nagging_text)
-
+if __name__ == "__main__":
+    nagging_message = whatwouldmaasay()
+    print("Generated Nagging:", nagging_message)
+    text_to_speech(nagging_message)
