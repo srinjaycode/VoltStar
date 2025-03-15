@@ -1,11 +1,10 @@
-
 import requests
 import os
 import time
 from google import genai
-import pygame  # For playing audio
+from IPython.display import Audio
+import json
 
-# API Keys
 GEMINI_API_KEY = "AIzaSyDU8Tumt4Exey92UeL6OmMoz7ZZVXqhAPQ"  # Set this in your environment
 ELEVEN_LABS_API_KEY = "sk_9c83348aa1907eac3425150be0f454e592053f74accb13bc" # Set this in your environment
 
@@ -19,9 +18,7 @@ HEADERS = {"x-api-key": GEMINI_API_KEY}
 genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Initial sensor values
-temp = "0 C"
-speed = "0 km/h"
-position = [0, 0]
+
 
 def whatwouldmaasay():
     """Generate an extremely aggressive, fast-talking, nagging AI mother response."""
@@ -31,14 +28,15 @@ def whatwouldmaasay():
             f"You are an extremely angry and overprotective mother. You are furious, impatient, and always yelling. "
             f"You talk extremely fast, interrupt often, and demand immediate action. "
             f"You have a GPS and thermometer on your kid, which reads: "
-            f"Position: {position}, Speed: {speed}, Temperature: {temp}. "
+            f"Position: {positioncurr}, Speed: {speedcurr}, Temperature: {tempcurr}. "
+            f"previously it was Position: {positionprev}, Speed: {speedprev}, Temperature: {tempprev}. your previous instruction was {commandprev} if u feel ur son has not listened to your previous instruction write only: not good enough"
             f"Use this data to SCREAM and NAG in MAX 12 WORDS!"
         )
     )
     return response.text.strip()
 
 def text_to_speech(text):
-    """Convert text to speech using Eleven Labs API and play immediately."""
+    """Convert text to speech using Eleven Labs API and play in Colab."""
     url = "https://api.elevenlabs.io/v1/text-to-speech/e32mynCa5wxYhGWUoxsr"  # Replace with actual voice ID
     headers = {
         "Content-Type": "application/json",
@@ -58,20 +56,49 @@ def text_to_speech(text):
         with open(audio_path, "wb") as f:
             f.write(response.content)
         print("Audio saved as mom_voice.mp3")
-
-        # Initialize pygame mixer and play the file
-        pygame.mixer.init()
-        pygame.mixer.music.load(audio_path)
-        pygame.mixer.music.play()
-
-        # Wait until the audio finishes playing
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.1)
-
+        return audio_path
     else:
         print("Error:", response.text)
+        return None
 
-if __name__ == "__main__":
-    nagging_message = whatwouldmaasay()
-    print("Generated Nagging:", nagging_message)
-    text_to_speech(nagging_message)
+def play_audio_colab(audio_path):
+    """Play audio in Google Colab using IPython.display.Audio."""
+    if audio_path:
+        return Audio(audio_path, autoplay=True)
+    else:
+        print("No valid audio file to play.")
+tase = False
+# Execute main logic
+while True:
+  with open("data.json", "r") as file:
+    data = json.load(file)
+  currdata = data["list1"]
+  prevdata = data["list2"]
+  tempcurr = currdata[0]
+  speedcurr = currdata[1]
+  positioncurr = currdata[2]
+  tempprev = prevdata[0]
+  speedprev = prevdata[1]
+  positionprev = prevdata[2]
+  nagging_message = whatwouldmaasay()
+  print("Generated Nagging:", nagging_message)
+  audio_file = text_to_speech(nagging_message)
+  play_audio_colab(audio_file)
+  time.sleep(5)
+  if nagging_message == "not good enough":
+    data = {"tase": True} 
+
+    with open("databack.json", "w") as file:
+      json.dump(data, file)
+    time.sleep(0.5)
+    data = {"tase": False} 
+
+    with open("databack.json", "w") as file:
+      json.dump(data, file)
+
+
+ 
+
+
+
+  commandprev = nagging_message
