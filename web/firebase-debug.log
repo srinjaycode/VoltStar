@@ -1,0 +1,150 @@
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:31.588Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:31.595Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[debug] [2025-10-31T11:17:31.637Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.639Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.641Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.651Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.652Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:31.689Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.690Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.691Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.694Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.696Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:31.703Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.703Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.703Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.705Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.705Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:31.710Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:31.711Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[debug] [2025-10-31T11:17:31.714Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.714Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.715Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.717Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.718Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:31.734Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.735Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.735Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.740Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.740Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:31.747Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.748Z] Checked if tokens are valid: false, expires at: 1761859004727
+[debug] [2025-10-31T11:17:31.749Z] > refreshing access token with scopes: []
+[debug] [2025-10-31T11:17:31.750Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-10-31T11:17:31.750Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.086Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.090Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.151Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [none]
+[debug] [2025-10-31T11:17:32.152Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:32.196Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.196Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.217Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [none]
+[debug] [2025-10-31T11:17:32.217Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:32.234Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.234Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.255Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [none]
+[debug] [2025-10-31T11:17:32.256Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:32.362Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.362Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.392Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [none]
+[debug] [2025-10-31T11:17:32.392Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:32.462Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.467Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.497Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [none]
+[debug] [2025-10-31T11:17:32.497Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:32.505Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-10-31T11:17:32.505Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-10-31T11:17:32.522Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [none]
+[debug] [2025-10-31T11:17:32.522Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:33.008Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com 403
+[debug] [2025-10-31T11:17:33.010Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [omitted]
+[debug] [2025-10-31T11:17:33.054Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com 403
+[debug] [2025-10-31T11:17:33.056Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [omitted]
+[debug] [2025-10-31T11:17:33.139Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com 200
+[debug] [2025-10-31T11:17:33.139Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:33.288Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com 200
+[debug] [2025-10-31T11:17:33.290Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:33.352Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com 200
+[debug] [2025-10-31T11:17:33.352Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:33.389Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com 200
+[debug] [2025-10-31T11:17:33.390Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [omitted]
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:33.419Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:33.420Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:33.437Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:33.438Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:37.616Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:37.617Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[debug] [2025-10-31T11:17:37.629Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.630Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.647Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.648Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.649Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.649Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.649Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:37.650Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[debug] [2025-10-31T11:17:37.652Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [none]
+[debug] [2025-10-31T11:17:37.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:37.658Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [none]
+[debug] [2025-10-31T11:17:37.658Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:37.662Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [none]
+[debug] [2025-10-31T11:17:37.663Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:37.667Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.667Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.671Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.671Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.671Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.672Z] Checked if tokens are valid: true, expires at: 1761913051505
+[debug] [2025-10-31T11:17:37.672Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [none]
+[debug] [2025-10-31T11:17:37.672Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:37.675Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [none]
+[debug] [2025-10-31T11:17:37.675Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:37.678Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [none]
+[debug] [2025-10-31T11:17:37.678Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com x-goog-quota-user=projects/voltstar01
+[debug] [2025-10-31T11:17:38.399Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com 403
+[debug] [2025-10-31T11:17:38.400Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [omitted]
+[debug] [2025-10-31T11:17:38.424Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com 403
+[debug] [2025-10-31T11:17:38.424Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseio.com [omitted]
+[debug] [2025-10-31T11:17:38.529Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com 200
+[debug] [2025-10-31T11:17:38.529Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:38.535Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com 200
+[debug] [2025-10-31T11:17:38.535Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:38.538Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com 200
+[debug] [2025-10-31T11:17:38.538Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2025-10-31T11:17:38.597Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com 200
+[debug] [2025-10-31T11:17:38.597Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/voltstar01/services/firebaseapphosting.googleapis.com [omitted]
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.635Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.635Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.646Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.646Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.711Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.711Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.713Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.713Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.741Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.742Z] > authorizing via signed-in user (pixelsauras@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2025-10-31T11:17:38.747Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-10-31T11:17:38.747Z] > authorizing via signed-in user (pixelsauras@gmail.com)
