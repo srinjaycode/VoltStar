@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoltStar Neural AI</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary: #00d9ff;
+  --primary-dark: #00a5cc;
+  --secondary: #7c3aed;
+  --accent: #ff006e;
+  --success: #00ff88;
+  --warning: #ffaa00;
+  --danger: #ff3366;
+  --bg: #0a0e27;
+  --bg-card: #151932;
+  --bg-elevated: #1a1f3a;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2d3454;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 24px;
+  padding-right: 424px;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 32px rgba(0, 217, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  to { left: 100%; }
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+}
+
+.header .subtitle {
+  font-size: 0.95rem;
+  opacity: 0.9;
+  margin-top: 8px;
+  letter-spacing: 3px;
+  font-weight: 600;
+}
+
+/* Status Bar */
+.status-bar {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-label {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.status-connected {
+  background: linear-gradient(135deg, var(--success), #00cc70);
+  color: #000;
+}
+
+.status-waiting {
+  background: linear-gradient(135deg, var(--warning), #dd8800);
+  color: #000;
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.neural-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.neural-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 217, 255, 0.2);
+}
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.metric-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metric-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.metric-checkbox label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.metric-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.metric-unit {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* Color classes */
+.color-primary { color: var(--primary); }
+.color-success { color: var(--success); }
+.color-warning { color: var(--warning); }
+.color-danger { color: var(--danger); }
+.color-secondary { color: var(--secondary); }
+.color-accent { color: var(--accent); }
+
+/* Chart Container */
+.chart-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.chart-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.chart-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-group label {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.control-group select {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.control-group button {
+  background: var(--primary);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.control-group button:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.chart-wrapper {
+  height: 400px;
+  position: relative;
+}
+
+/* AI Sidebar */
+.ai-sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 400px;
+  height: 100vh;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.ai-sidebar-header {
+  background: linear-gradient(135deg, var(--secondary), var(--primary));
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-sidebar-title {
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-status-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 10px 16px;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tab-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-content.active {
+  display: flex;
+}
+
+/* AI Chat */
+.ai-chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.ai-message {
+  background: var(--bg-elevated);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ai-message.user {
+  border-left-color: var(--secondary);
+}
+
+.ai-message-type {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.ai-message-content {
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 0.875rem;
+  white-space: pre-line;
+}
+
+/* AI Chat Input */
+.ai-chat-input {
+  padding: 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.ai-input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 12px 20px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.ai-input:focus {
+  border-color: var(--primary);
+}
+
+.ai-send {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.ai-send:hover:not(:disabled) {
+  transform: scale(1.1);
+}
+
+.ai-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-memory-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--danger), #cc0044);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.clear-memory-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 51, 102, 0.3);
+}
+
+/* Diagnostics Tab */
+.ai-diagnostics {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.diagnostic-item {
+  background: var(--bg-elevated);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.diagnostic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.diagnostic-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.diagnostic-status {
+  font-size: 0.7rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-excellent { background: var(--success); color: #000; }
+.status-good { background: #4ade80; color: #000; }
+.status-moderate { background: var(--warning); color: #000; }
+.status-poor { background: #ff8c00; color: #000; }
+.status-critical { background: var(--danger); color: #fff; }
+
+.diagnostic-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: var(--primary);
+}
+
+.diagnostic-message {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.diagnostic-suggestion {
+  color: var(--success);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(0, 255, 136, 0.1);
+  border-radius: 6px;
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .container {
+    padding-right: 24px;
+  }
+  
+  .ai-sidebar {
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .ai-sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .metrics-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+  
+  .ai-sidebar {
+    width: 100%;
+  }
+  
+  .container {
+    padding: 16px;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-elevated);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* AI Toggle for Mobile */
+.ai-toggle {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 217, 255, 0.4);
+  transition: transform 0.3s;
+  z-index: 999;
+}
+
+.ai-toggle:hover {
+  transform: scale(1.1);
+}
+
+.ai-close-mobile {
+  display: none;
+  cursor: pointer;
+  font-size: 1.5rem;
+  line-height: 1;
+  transition: transform 0.2s;
+  position: absolute;
+  right: 20px;
+  top: 20px;
+}
+
+.ai-close-mobile:hover {
+  transform: rotate(90deg);
+}
+
+@media (max-width: 1400px) {
+  .ai-toggle {
+    display: flex;
+  }
+  
+  .ai-close-mobile {
+    display: block;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <header class="header">
+    <h1>VOLTSTAR NEURAL AI</h1>
+    <div class="subtitle">1000W DIRECT DRIVE • 48V 26AH • REINFORCEMENT LEARNING</div>
+  </header>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-item">
+      <span class="status-label">Connection:</span>
+      <div id="connectionStatus" class="status-indicator status-waiting pulse">
+        <span>●</span>
+        <span>WAITING...</span>
+      </div>
+    </div>
+    <div class="neural-badge">
+      NEURAL NET ACTIVE
+    </div>
+    <div class="status-item">
+      <span class="status-label">Updated:</span>
+      <span id="lastUpdateTimestamp" style="color: var(--success); font-weight: 700;">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- Metrics Grid -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Speed</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartSpeed">
+          <label for="chartSpeed">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-success" id="speedValue">0.0</div>
+      <div class="metric-unit">km/h</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Voltage</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartVoltage" checked>
+          <label for="chartVoltage">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-primary" id="voltageValue">0.0</div>
+      <div class="metric-unit">V</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Current</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartCurrent" checked>
+          <label for="chartCurrent">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-danger" id="currentValue">0.0</div>
+      <div class="metric-unit">A</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Power</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartPower">
+          <label for="chartPower">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-warning" id="powerValue">0</div>
+      <div class="metric-unit">W</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">RPM</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartRpm">
+          <label for="chartRpm">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-secondary" id="rpmValue">0</div>
+      <div class="metric-unit"></div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Distance</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartDistance">
+          <label for="chartDistance">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-primary" id="distanceValue">0.00</div>
+      <div class="metric-unit">km</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Rotation</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartDegree">
+          <label for="chartDegree">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-accent" id="degreeValue">0.0</div>
+      <div class="metric-unit">°</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Ah Used</span>
+        <div class="metric-checkbox">
+          <input type="checkbox" id="chartAh">
+          <label for="chartAh">Graph</label>
+        </div>
+      </div>
+      <div class="metric-value color-warning" id="ahValue">0.00</div>
+      <div class="metric-unit">Ah</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Efficiency</span>
+      </div>
+      <div class="metric-value color-success" id="efficiencyValue">--</div>
+      <div class="metric-unit">Wh/km</div>
+    </div>
+  </div>
+
+  <!-- Chart Section -->
+  <div class="chart-section">
+    <div class="chart-header">
+      <div class="chart-title">Real-Time Telemetry</div>
+      <div class="chart-controls">
+        <div class="control-group">
+          <label>Points:</label>
+          <select id="dataPoints">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <button id="clearDataBtn">Clear Data</button>
+        </div>
+        <div class="control-group">
+          <button id="refreshDataBtn">🔄 Refresh</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-wrapper">
+      <canvas id="telemetryChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- AI Sidebar -->
+<div class="ai-sidebar" id="aiSidebar">
+  <div class="ai-sidebar-header">
+    <div class="ai-sidebar-title">
+      <div class="ai-status-dot"></div>
+      NEURAL AI
+    </div>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="chat">💬 Chat</button>
+      <button class="tab-btn" data-tab="diagnostics">🔬 Analysis</button>
+    </div>
+    <span class="ai-close-mobile" id="aiCloseBtn">✕</span>
+  </div>
+
+  <!-- Chat Tab -->
+  <div class="tab-content active" id="chatTab">
+    <div class="ai-chat-container">
+      <div class="ai-messages" id="aiMessages">
+        <div class="ai-message">
+          <div class="ai-message-type color-primary">NEURAL AI</div>
+          <div class="ai-message-content">Welcome! I'm your VoltStar Neural AI. Ask me about battery health, range, efficiency, motor performance, or any questions about your vehicle!</div>
+        </div>
+      </div>
+
+      <div class="ai-chat-input">
+        <div class="ai-input-group">
+          <input type="text" class="ai-input" id="aiInput" placeholder="Ask me anything..." autocomplete="off">
+          <button class="ai-send" id="aiSendBtn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+            </svg>
+          </button>
+        </div>
+        <button class="clear-memory-btn" id="clearMemoryBtn">
+          🗑️ CLEAR CHAT HISTORY
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diagnostics Tab -->
+  <div class="tab-content" id="diagnosticsTab">
+    <div class="ai-diagnostics" id="aiDiagnostics">
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">System Analysis</span>
+          <span class="diagnostic-status status-good">Ready</span>
+        </div>
+        <div class="diagnostic-message">Waiting for vehicle data to perform comprehensive analysis...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Toggle Button for Mobile -->
+<div class="ai-toggle" id="aiToggleBtn">
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+  </svg>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+
+<script>
+console.log('🚀 VoltStar Neural AI - Initializing...');
+
+// Firebase Configuration - CORRECTED for Europe West 1
+const firebaseConfig = {
+  databaseURL: "https://voltstar01-default-rtdb.europe-west1.firebasedatabase.app"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// Data Storage
+let telemetryData = {
+  timestamps: [],
+  speed: [],
+  voltage: [],
+  current: [],
+  power: [],
+  rpm: [],
+  distance: [],
+  degree: [],
+  ah: []
+};
+
+let currentData = {
+  speed: 0,
+  voltage: 0,
+  current: 0,
+  power: 0,
+  rpm: 0,
+  distance: 0,
+  degree: 0,
+  ah: 0,
+  efficiency: 0
+};
+
+let chatHistory = [];
+let maxDataPoints = 100;
+let isConnected = false;
+let lastUpdateTime = 0;
+
+// Physical Constants for Analysis
+const VEHICLE_CONSTANTS = {
+  batteryCapacity: 26,
+  batteryVoltage: 48,
+  motorPower: 1000,
+  wheelDiameter: 0.66,
+  vehicleMass: 120,
+  motorEfficiency: 0.85,
+  rollingResistance: 0.008,
+  dragCoefficient: 0.6,
+  frontalArea: 0.5,
+  airDensity: 1.225,
+  chainDrive: false,
+  internalResistanceTarget: 0.15
+};
+
+// Initialize Chart
+let telemetryChart;
+
+function initChart() {
+  const ctx = document.getElementById('telemetryChart').getContext('2d');
+  telemetryChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#e2e8f0',
+            font: {
+              size: 11,
+              weight: 600
+            },
+            padding: 15,
+            usePointStyle: true
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(21, 25, 50, 0.95)',
+          titleColor: '#00d9ff',
+          bodyColor: '#e2e8f0',
+          borderColor: '#2d3454',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true
+        }
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: {
+            color: 'rgba(45, 52, 84, 0.3)',
+            drawBorder: false
+          },
+          ticks: {
+            color: '#94a3b8',
+            maxRotation: 0,
+            autoSkipPadding: 20,
+            font: { size: 10 }
+          }
+        },
+        y: {
+          display: true,
+          grid: {
+            color: 'rgba(45, 52, 84, 0.3)',
+            drawBorder: false
+          },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 10 }
+          }
+        }
+      },
+      animation: {
+        duration: 300
+      }
+    }
+  });
+}
+
+// Chart Dataset Configurations
+const chartConfigs = {
+  speed: { label: 'Speed (km/h)', color: '#00ff88', yAxisID: 'y' },
+  voltage: { label: 'Voltage (V)', color: '#00d9ff', yAxisID: 'y' },
+  current: { label: 'Current (A)', color: '#ff3366', yAxisID: 'y' },
+  power: { label: 'Power (W)', color: '#ffaa00', yAxisID: 'y' },
+  rpm: { label: 'RPM', color: '#7c3aed', yAxisID: 'y' },
+  distance: { label: 'Distance (km)', color: '#00d9ff', yAxisID: 'y' },
+  degree: { label: 'Rotation (°)', color: '#ff006e', yAxisID: 'y' },
+  ah: { label: 'Ah Used', color: '#ffaa00', yAxisID: 'y' }
+};
+
+// Update Chart
+function updateChart() {
+  const datasets = [];
+  
+  for (const [key, config] of Object.entries(chartConfigs)) {
+    const checkbox = document.getElementById(`chart${key.charAt(0).toUpperCase() + key.slice(1)}`);
+    if (checkbox && checkbox.checked && telemetryData[key].length > 0) {
+      datasets.push({
+        label: config.label,
+        data: telemetryData[key],
+        borderColor: config.color,
+        backgroundColor: config.color + '20',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        yAxisID: config.yAxisID
+      });
+    }
+  }
+  
+  telemetryChart.data.labels = telemetryData.timestamps;
+  telemetryChart.data.datasets = datasets;
+  telemetryChart.update('none');
+}
+
+// Firebase Listeners - CORRECTED to load ALL readings
+function setupFirebaseListeners() {
+  console.log('🔗 Setting up Firebase listener for cycle_readings...');
+  
+  const readingsRef = database.ref('/cycle_readings');
+  
+  readingsRef.on('value', (snapshot) => {
+    if (!snapshot.exists()) {
+      console.warn('⚠️ No cycle_readings data found');
+      updateConnectionStatus(false);
+      return;
+    }
+    
+    const readings = snapshot.val();
+    console.log('📊 Received data:', Object.keys(readings).length, 'readings');
+    
+    // Get all readings and sort by timestamp or key
+    const readingKeys = Object.keys(readings).sort();
+    console.log('📈 Processing', readingKeys.length, 'data points');
+    
+    // Clear existing telemetry data
+    for (const key in telemetryData) {
+      telemetryData[key] = [];
+    }
+    
+    // Process all readings
+    readingKeys.forEach((key, index) => {
+      const reading = readings[key];
+      
+      // Extract data
+      const speed = parseFloat(reading.speed) || 0;
+      const voltage = parseFloat(reading.voltage) || 0;
+      const current = parseFloat(reading.current) || 0;
+      const rpm = parseInt(reading.rpm) || 0;
+      const distance = parseFloat(reading.distance) || 0;
+      const degree = parseFloat(reading.degree) || 0;
+      const ah = parseFloat(reading.ah) || 0;
+      const power = Math.round(voltage * current);
+      
+      // Create timestamp (use reading timestamp if available, otherwise use index)
+      let timestamp;
+      if (reading.timestamp) {
+        const date = new Date(reading.timestamp);
+        timestamp = date.toLocaleTimeString();
+      } else {
+        timestamp = `Point ${index + 1}`;
+      }
+      
+      // Add to telemetry arrays
+      telemetryData.timestamps.push(timestamp);
+      telemetryData.speed.push(speed);
+      telemetryData.voltage.push(voltage);
+      telemetryData.current.push(current);
+      telemetryData.power.push(power);
+      telemetryData.rpm.push(rpm);
+      telemetryData.distance.push(distance);
+      telemetryData.degree.push(degree);
+      telemetryData.ah.push(ah);
+    });
+    
+    // Maintain max data points (keep only the latest)
+    if (telemetryData.timestamps.length > maxDataPoints) {
+      const excess = telemetryData.timestamps.length - maxDataPoints;
+      for (const key in telemetryData) {
+        telemetryData[key].splice(0, excess);
+      }
+    }
+    
+    // Update current data with the latest reading
+    const latestKey = readingKeys[readingKeys.length - 1];
+    const latestReading = readings[latestKey];
+    
+    currentData.speed = parseFloat(latestReading.speed) || 0;
+    currentData.voltage = parseFloat(latestReading.voltage) || 0;
+    currentData.current = parseFloat(latestReading.current) || 0;
+    currentData.rpm = parseInt(latestReading.rpm) || 0;
+    currentData.distance = parseFloat(latestReading.distance) || 0;
+    currentData.degree = parseFloat(latestReading.degree) || 0;
+    currentData.ah = parseFloat(latestReading.ah) || 0;
+    currentData.power = Math.round(currentData.voltage * currentData.current);
+    
+    // Calculate efficiency
+    if (currentData.distance > 0 && currentData.ah > 0) {
+      const whUsed = currentData.ah * currentData.voltage;
+      currentData.efficiency = (whUsed / currentData.distance).toFixed(1);
+    }
+    
+    isConnected = true;
+    updateConnectionStatus(true);
+    
+    console.log('✅ Loaded', telemetryData.timestamps.length, 'data points');
+    console.log('✅ Latest data:', currentData);
+    
+    // Update UI
+    updateMetricsDisplay();
+    updateChart();
+    updateDiagnostics();
+    
+  }, (error) => {
+    console.error('❌ Firebase error:', error);
+    updateConnectionStatus(false);
+  });
+  
+  // Also listen for connection state
+  const connectedRef = database.ref('.info/connected');
+  connectedRef.on('value', (snap) => {
+    if (snap.val() === true) {
+      console.log('✅ Connected to Firebase');
+    } else {
+      console.log('❌ Disconnected from Firebase');
+      updateConnectionStatus(false);
+    }
+  });
+}
+
+// Update Connection Status
+function updateConnectionStatus(connected) {
+  const statusEl = document.getElementById('connectionStatus');
+  const timestamp = document.getElementById('lastUpdateTimestamp');
+  
+  if (connected) {
+    statusEl.className = 'status-indicator status-connected';
+    statusEl.innerHTML = '<span>●</span><span>CONNECTED</span>';
+    timestamp.textContent = new Date().toLocaleTimeString();
+  } else {
+    statusEl.className = 'status-indicator status-waiting pulse';
+    statusEl.innerHTML = '<span>●</span><span>WAITING...</span>';
+  }
+}
+
+// Update Metrics Display
+function updateMetricsDisplay() {
+  document.getElementById('speedValue').textContent = currentData.speed.toFixed(1);
+  document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
+  document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
+  document.getElementById('powerValue').textContent = currentData.power;
+  document.getElementById('rpmValue').textContent = currentData.rpm;
+  document.getElementById('distanceValue').textContent = currentData.distance.toFixed(2);
+  document.getElementById('degreeValue').textContent = currentData.degree.toFixed(1);
+  document.getElementById('ahValue').textContent = currentData.ah.toFixed(2);
+  document.getElementById('efficiencyValue').textContent = currentData.efficiency || '--';
+}
+
+// Advanced Diagnostics
+function updateDiagnostics() {
+  const diagnosticsContainer = document.getElementById('aiDiagnostics');
+  diagnosticsContainer.innerHTML = '';
+  
+  // Battery Voltage Analysis
+  let batteryHtml = '';
+  if (currentData.voltage > 0) {
+    const voltagePercent = (currentData.voltage / 54.6) * 100; // 54.6V is full charge for 13S
+    let status, message, suggestion;
+    
+    if (currentData.voltage > 52) {
+      status = 'excellent';
+      message = 'Battery fully charged and healthy.';
+      suggestion = 'Battery at optimal charge level. Ready for maximum range.';
+    } else if (currentData.voltage > 48) {
+      status = 'good';
+      message = 'Battery charge level is good.';
+      suggestion = 'Normal operating voltage. Continue monitoring.';
+    } else if (currentData.voltage > 42) {
+      status = 'moderate';
+      message = 'Battery charge getting low.';
+      suggestion = '⚠️ Consider charging soon. Below 50% capacity.';
+    } else {
+      status = 'critical';
+      message = 'Battery voltage critically low!';
+      suggestion = '🚨 CHARGE IMMEDIATELY! Risk of battery damage and reduced lifespan.';
+    }
+    
+    batteryHtml = `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Battery Voltage</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${currentData.voltage.toFixed(1)}V (${voltagePercent.toFixed(0)}%)</div>
+        <div class="diagnostic-message">${message} Nominal: 48V | Full: 54.6V | Empty: 39V</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Battery Internal Resistance
+  if (currentData.current > 0.5 && currentData.voltage > 0) {
+    const nominalVoltage = 48;
+    const estimatedInternalResistance = (nominalVoltage - currentData.voltage) / currentData.current;
+    let status, message, suggestion;
+    
+    if (estimatedInternalResistance < 0.1) {
+      status = 'excellent';
+      message = 'Battery internal resistance is excellent. Cells are healthy and fresh.';
+      suggestion = 'Maintain current charging practices. Battery health is optimal.';
+    } else if (estimatedInternalResistance < 0.2) {
+      status = 'good';
+      message = 'Internal resistance within normal range for used battery.';
+      suggestion = 'Monitor voltage sag under load. Keep battery between 20-80% charge.';
+    } else if (estimatedInternalResistance < 0.4) {
+      status = 'moderate';
+      message = 'Elevated internal resistance detected. Battery showing wear.';
+      suggestion = '⚠️ Test individual cell voltages. Check for cell imbalance. Consider capacity test.';
+    } else {
+      status = 'poor';
+      message = `High internal resistance (${estimatedInternalResistance.toFixed(2)}Ω). Significantly reduced performance.`;
+      suggestion = '🚨 Battery degraded. Check connections, test cells individually, plan for replacement.';
+    }
+    
+    batteryHtml += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Internal Resistance</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${Math.abs(estimatedInternalResistance).toFixed(3)} Ω</div>
+        <div class="diagnostic-message">${message} Target: <0.15Ω for optimal performance.</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  diagnosticsContainer.innerHTML += batteryHtml;
+  
+  // Current Draw Analysis
+  if (currentData.current > 0) {
+    let status, message, suggestion;
+    const currentPercent = (currentData.current / 30) * 100; // Assuming 30A max continuous
+    
+    if (currentData.current < 5) {
+      status = 'excellent';
+      message = 'Low current draw. Excellent efficiency mode.';
+      suggestion = 'Cruising efficiently. Optimal for maximum range.';
+    } else if (currentData.current < 15) {
+      status = 'good';
+      message = 'Moderate current draw. Normal riding conditions.';
+      suggestion = 'Good balance between power and efficiency.';
+    } else if (currentData.current < 25) {
+      status = 'moderate';
+      message = 'High current draw. Acceleration or hill climbing.';
+      suggestion = 'Sustained high current will reduce range. Use moderately.';
+    } else {
+      status = 'critical';
+      message = 'Very high current! Maximum power output.';
+      suggestion = '⚠️ Avoid sustained use. Risk of overheating controller/battery.';
+    }
+    
+    diagnosticsContainer.innerHTML += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Current Draw</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${currentData.current.toFixed(1)}A (${currentPercent.toFixed(0)}%)</div>
+        <div class="diagnostic-message">${message} Power output: ${currentData.power}W / ${VEHICLE_CONSTANTS.motorPower}W max.</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Range Estimation
+  if (currentData.ah > 0.01 && currentData.distance > 0.01) {
+    const remainingAh = VEHICLE_CONSTANTS.batteryCapacity - currentData.ah;
+    const currentRate = currentData.ah / currentData.distance;
+    const estimatedRange = remainingAh / currentRate;
+    let status, message, suggestion;
+    
+    if (estimatedRange > 30) {
+      status = 'excellent';
+      message = 'Excellent range remaining. Efficient riding.';
+      suggestion = 'Continue current riding style for optimal range.';
+    } else if (estimatedRange > 15) {
+      status = 'good';
+      message = 'Good range for continued riding.';
+      suggestion = 'Monitor energy usage. Plan charging location.';
+    } else if (estimatedRange > 5) {
+      status = 'moderate';
+      message = 'Limited range remaining.';
+      suggestion = '⚠️ Plan to charge soon. Reduce speed/assist level to extend range.';
+    } else {
+      status = 'critical';
+      message = 'Critical! Very low range.';
+      suggestion = '🚨 Find charging point immediately. Minimize power usage.';
+    }
+    
+    diagnosticsContainer.innerHTML += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Estimated Range</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${estimatedRange.toFixed(1)} km</div>
+        <div class="diagnostic-message">${message} Consumption: ${currentRate.toFixed(2)} Ah/km | Remaining: ${remainingAh.toFixed(1)} Ah</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Motor Efficiency
+  if (currentData.power > 50 && currentData.speed > 1) {
+    const actualEfficiency = VEHICLE_CONSTANTS.motorEfficiency * 100;
+    let status = 'good';
+    let message = 'Direct drive motor operating efficiently.';
+    let suggestion = 'No chain maintenance needed. System optimized.';
+    
+    diagnosticsContainer.innerHTML += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Motor System</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${actualEfficiency.toFixed(0)}% Efficiency</div>
+        <div class="diagnostic-message">${message} ${VEHICLE_CONSTANTS.motorPower}W direct drive hub motor.</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Rolling Resistance
+  if (currentData.speed > 5) {
+    const speedMs = currentData.speed / 3.6;
+    const rollingForce = VEHICLE_CONSTANTS.rollingResistance * VEHICLE_CONSTANTS.vehicleMass * 9.81;
+    const rollingPower = rollingForce * speedMs;
+    const rollingLoss = currentData.power > 0 ? (rollingPower / currentData.power) * 100 : 0;
+    
+    let status, message, suggestion;
+    
+    if (rollingLoss < 15) {
+      status = 'excellent';
+      message = 'Minimal rolling resistance. Tires optimized.';
+      suggestion = 'Maintain tire pressure at 45-50 PSI.';
+    } else if (rollingLoss < 25) {
+      status = 'good';
+      message = 'Normal rolling resistance for e-bike.';
+      suggestion = 'Check tire pressure weekly for best efficiency.';
+    } else {
+      status = 'moderate';
+      message = 'Higher than optimal rolling resistance.';
+      suggestion = '⚠️ Check tire pressure immediately. Inspect bearings and brakes.';
+    }
+    
+    diagnosticsContainer.innerHTML += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Rolling Resistance</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${rollingLoss.toFixed(1)}% Power Loss</div>
+        <div class="diagnostic-message">${message} Coefficient (Crr): ${VEHICLE_CONSTANTS.rollingResistance}</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Aerodynamic Drag
+  if (currentData.speed > 15) {
+    const speedMs = currentData.speed / 3.6;
+    const dragForce = 0.5 * VEHICLE_CONSTANTS.airDensity * VEHICLE_CONSTANTS.frontalArea * 
+                      VEHICLE_CONSTANTS.dragCoefficient * speedMs * speedMs;
+    const dragPower = dragForce * speedMs;
+    const dragLoss = currentData.power > 0 ? (dragPower / currentData.power) * 100 : 0;
+    
+    let status, message, suggestion;
+    
+    if (dragLoss < 20) {
+      status = 'good';
+      message = 'Aerodynamic drag reasonable for speed.';
+      suggestion = 'Maintain streamlined riding position.';
+    } else if (dragLoss < 35) {
+      status = 'moderate';
+      message = 'Aero drag becoming significant.';
+      suggestion = 'Tuck in more. Remove bulky accessories.';
+    } else {
+      status = 'poor';
+      message = 'High aero drag at this speed!';
+      suggestion = '⚠️ Most power fighting wind. Reduce speed for better range.';
+    }
+    
+    diagnosticsContainer.innerHTML += `
+      <div class="diagnostic-item">
+        <div class="diagnostic-header">
+          <span class="diagnostic-label">Aerodynamic Drag</span>
+          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="diagnostic-value">${dragLoss.toFixed(1)}% Power Loss</div>
+        <div class="diagnostic-message">${message} Drag coefficient (Cd): ${VEHICLE_CONSTANTS.dragCoefficient} | Area: ${VEHICLE_CONSTANTS.frontalArea}m²</div>
+        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
+      </div>
+    `;
+  }
+  
+  // Direct Drive System Status
+  diagnosticsContainer.innerHTML += `
+    <div class="diagnostic-item">
+      <div class="diagnostic-header">
+        <span class="diagnostic-label">Drive System</span>
+        <span class="diagnostic-status status-excellent">DIRECT DRIVE</span>
+      </div>
+      <div class="diagnostic-value">✓ Chainless</div>
+      <div class="diagnostic-message">Direct drive hub motor - zero chain maintenance required. Power transmitted directly to wheel.</div>
+      <div class="diagnostic-suggestion">💡 Advantages: No chain wear, no lubrication, ~2-3% efficiency gain, silent operation, weather-proof.</div>
+    </div>
+  `;
+}
+
+// AI Response Generator (continuing from previous implementation)
+function generateAIResponse(userMessage) {
+  const msg = userMessage.toLowerCase();
+  
+  const keywords = {
+    battery: ['battery', 'voltage', 'charge', 'charging', 'capacity', 'ah', 'cell', 'discharge', 'sag'],
+    range: ['range', 'distance', 'how far', 'miles', 'km', 'kilometers', 'travel'],
+    efficiency: ['efficiency', 'wh/km', 'consumption', 'economic', 'save', 'optimize'],
+    motor: ['motor', 'power', 'watt', 'torque', 'rpm', 'speed', 'fast', 'acceleration'],
+    performance: ['performance', 'top speed', 'max', 'improve', 'upgrade', 'better'],
+    maintenance: ['maintain', 'maintenance', 'fix', 'repair', 'check', 'service', 'problem'],
+    resistance: ['resistance', 'internal', 'ohm', 'impedance'],
+    health: ['health', 'condition', 'state', 'status', 'diagnostic'],
+    tire: ['tire', 'pressure', 'psi', 'wheel', 'bearing'],
+    chain: ['chain', 'drive', 'belt', 'gear']
+  };
+  
+  let matchedCategories = [];
+  for (const [category, words] of Object.entries(keywords)) {
+    if (words.some(word => msg.includes(word))) {
+      matchedCategories.push(category);
+    }
+  }
+  
+  let response = '';
+  
+  if (matchedCategories.includes('battery') || matchedCategories.includes('health')) {
+    const voltage = currentData.voltage;
+    const ah = currentData.ah;
+    const remainingCapacity = VEHICLE_CONSTANTS.batteryCapacity - ah;
+    const stateOfCharge = (voltage / 54.6) * 100;
+    
+    response = `Battery Status Report:\n\n`;
+    response += `🔋 Voltage: ${voltage.toFixed(1)}V (${stateOfCharge.toFixed(0)}% charge)\n`;
+    response += `⚡ Current: ${currentData.current.toFixed(1)}A\n`;
+    response += `📊 Capacity used: ${ah.toFixed(2)} / ${VEHICLE_CONSTANTS.batteryCapacity} Ah\n`;
+    response += `🔌 Power: ${currentData.power}W\n\n`;
+    
+    if (voltage > 52) {
+      response += `✅ Battery fully charged and healthy!`;
+    } else if (voltage > 48) {
+      response += `✓ Battery in good condition.`;
+    } else if (voltage > 42) {
+      response += `⚠️ Battery getting low - plan to charge soon.`;
+    } else {
+      response += `🚨 Battery critically low - charge immediately!`;
+    }
+  }
+  
+  else if (matchedCategories.includes('range')) {
+    if (currentData.ah > 0.01 && currentData.distance > 0.01) {
+      const rate = currentData.ah / currentData.distance;
+      const remaining = VEHICLE_CONSTANTS.batteryCapacity - currentData.ah;
+      const estimatedRange = remaining / rate;
+      
+      response = `Range Analysis:\n\n`;
+      response += `📍 Distance: ${currentData.distance.toFixed(2)} km\n`;
+      response += `⚡ Energy used: ${currentData.ah.toFixed(2)} Ah\n`;
+      response += `📊 Rate: ${rate.toFixed(2)} Ah/km\n\n`;
+      response += `🎯 Estimated remaining: ${estimatedRange.toFixed(1)} km\n\n`;
+      response += `Tips to improve range:\n`;
+      response += `• Keep speed 20-25 km/h for best efficiency\n`;
+      response += `• Maintain tire pressure 45-50 PSI\n`;
+      response += `• Smooth acceleration\n`;
+      response += `• Reduce weight`;
+    } else {
+      response = `Need more ride data for accurate range estimate.\n\nTypical range with your 48V 26Ah battery:\n• Conservative: 40-50 km\n• Normal: 50-60 km\n• Efficient: 60-70 km`;
+    }
+  }
+  
+  else if (matchedCategories.includes('chain')) {
+    response = `✅ Your VoltStar has NO CHAIN!\n\nDirect drive hub motor system:\n• Zero chain maintenance\n• No lubrication needed\n• No wear or stretch\n• ~2-3% efficiency gain\n• Silent operation\n• Weather-proof\n\nPower flows: Battery → Controller → Motor → Wheel\n\nThis is why it's so reliable!`;
+  }
+  
+  else if (msg.includes('hello') || msg.includes('hi')) {
+    response = `Hello! 👋\n\nCurrent Status:\n• Voltage: ${currentData.voltage.toFixed(1)}V\n• Current: ${currentData.current.toFixed(1)}A\n• Power: ${currentData.power}W\n• Speed: ${currentData.speed.toFixed(1)} km/h\n\nWhat would you like to know?`;
+  }
+  
+  else {
+    response = `I can help with:\n\n🔋 Battery & Health\n⚡ Range & Efficiency\n🔧 Maintenance & Diagnostics\n🚴 Performance & Speed\n\nCurrent readings:\n• Voltage: ${currentData.voltage.toFixed(1)}V\n• Current: ${currentData.current.toFixed(1)}A\n• Distance: ${currentData.distance.toFixed(2)} km\n\nTry asking a specific question!`;
+  }
+  
+  return response;
+}
+
+// Chat Functions
+function addAIMessage(content, type = 'ai') {
+  const messagesContainer = document.getElementById('aiMessages');
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `ai-message ${type}`;
+  
+  const typeLabel = type === 'user' ? 'YOU' : 'NEURAL AI';
+  const typeColor = type === 'user' ? 'color-secondary' : 'color-primary';
+  
+  messageDiv.innerHTML = `
+    <div class="ai-message-type ${typeColor}">${typeLabel}</div>
+    <div class="ai-message-content">${content}</div>
+  `;
+  
+  messagesContainer.appendChild(messageDiv);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  
+  chatHistory.push({ type, content, timestamp: Date.now() });
+}
+
+function handleUserMessage() {
+  const input = document.getElementById('aiInput');
+  const message = input.value.trim();
+  
+  if (!message) return;
+  
+  addAIMessage(message, 'user');
+  input.value = '';
+  
+  setTimeout(() => {
+    const response = generateAIResponse(message);
+    addAIMessage(response, 'ai');
+  }, 300);
+}
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('✅ DOM Loaded');
+  
+  initChart();
+  setupFirebaseListeners();
+  
+  document.getElementById('dataPoints').addEventListener('change', (e) => {
+    maxDataPoints = parseInt(e.target.value);
+  });
+  
+  document.getElementById('clearDataBtn').addEventListener('click', () => {
+    for (const key in telemetryData) {
+      telemetryData[key] = [];
+    }
+    updateChart();
+  });
+  
+  document.getElementById('refreshDataBtn').addEventListener('click', updateChart);
+  
+  document.querySelectorAll('.metric-checkbox input').forEach(checkbox => {
+    checkbox.addEventListener('change', updateChart);
+  });
+  
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      
+      document.getElementById(tabName === 'chat' ? 'chatTab' : 'diagnosticsTab').classList.add('active');
+    });
+  });
+  
+  const aiInput = document.getElementById('aiInput');
+  const aiSendBtn = document.getElementById('aiSendBtn');
+  
+  aiSendBtn.addEventListener('click', handleUserMessage);
+  aiInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleUserMessage();
+  });
+  
+  document.getElementById('clearMemoryBtn').addEventListener('click', () => {
+    chatHistory = [];
+    document.getElementById('aiMessages').innerHTML = `
+      <div class="ai-message">
+        <div class="ai-message-type color-primary">NEURAL AI</div>
+        <div class="ai-message-content">Chat cleared. How can I help?</div>
+      </div>
+    `;
+  });
+  
+  document.getElementById('aiToggleBtn').addEventListener('click', () => {
+    document.getElementById('aiSidebar').classList.add('open');
+  });
+  
+  document.getElementById('aiCloseBtn').addEventListener('click', () => {
+    document.getElementById('aiSidebar').classList.remove('open');
+  });
+  
+  console.log('✅ All systems initialized');
+  console.log('🔗 Firebase URL:', firebaseConfig.databaseURL);
+});
+
+// Update diagnostics periodically
+setInterval(() => {
+  if (isConnected) {
+    updateDiagnostics();
+  }
+}, 10000); // Every 10 seconds
+
+console.log('🎯 VoltStar Neural AI Ready!');
+</script>
+
+</body>
+</html>
