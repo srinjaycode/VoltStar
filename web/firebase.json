@@ -4,7 +4,8 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "android/**"
     ],
     "rewrites": [
       {
@@ -12,5 +13,8 @@
         "destination": "/index.html"
       }
     ]
+  },
+  "database": {
+    "rules": "database.rules.json"
   }
 }
