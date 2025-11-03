@@ -1,52 +1,52 @@
 {
-  "rules": {
-    "cycle_readings": {
-      ".read": true,
-      ".write": true,
-      ".indexOn": ["timestamp"],
-      "$readingId": {
-        ".validate": "newData.hasChildren(['speed', 'voltage', 'current', 'rpm', 'distance', 'ah', 'degree', 'timestamp'])",
-        "speed": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
-        },
-        "voltage": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
-        },
-        "current": {
-          ".validate": "newData.isNumber() && newData.val() >= -100 && newData.val() <= 100"
-        },
-        "rpm": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
-        },
-        "distance": {
-          ".validate": "newData.isNumber() && newData.val() >= 0"
-        },
-        "ah": {
-          ".validate": "newData.isNumber() && newData.val() >= 0"
-        },
-        "degree": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 360"
-        },
-        "timestamp": {
-          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
-        },
-        "$other": {
-          ".validate": false
+    "rules": {
+      "cycle_readings": {
+        ".read": true,
+        ".write": true,
+        ".indexOn": ["timestamp"],
+        "$readingId": {
+          ".validate": "newData.hasChildren(['speed', 'voltage', 'current', 'rpm', 'distance', 'ah', 'degree', 'timestamp'])",
+          "speed": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+          },
+          "voltage": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+          },
+          "current": {
+            ".validate": "newData.isNumber() && newData.val() >= -100 && newData.val() <= 100"
+          },
+          "rpm": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+          },
+          "distance": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "ah": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "degree": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 360"
+          },
+          "timestamp": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
+      },
+      "ai_insights": {
+        ".read": true,
+        ".write": true,
+        ".indexOn": ["timestamp"]
+      },
+      "ai_usage": {
+        ".read": true,
+        ".write": true
+      },
+      "rate_limits": {
+        ".read": true,
+        ".write": true
       }
-    },
-    "ai_insights": {
-      ".read": true,
-      ".write": true,
-      ".indexOn": ["timestamp"]
-    },
-    "ai_usage": {
-      ".read": true,
-      ".write": true
-    },
-    "rate_limits": {
-      ".read": true,
-      ".write": true
     }
   }
-}
