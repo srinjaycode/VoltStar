@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>VoltStar Neural AI</title>
+<title>VoltStar Neural AI - Telemetry Dashboard</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
@@ -13,167 +14,63 @@
 <body>
 
 <div class="container">
-  <!-- header -->
   <div class="header">
     <h1>⚡ VOLTSTAR NEURAL AI ⚡</h1>
-    <div class="subtitle">SELF-LEARNING TELEMETRY SYSTEM</div>
+    <div class="subtitle">REAL-TIME TELEMETRY DASHBOARD</div>
   </div>
 
-  <!-- status bar -->
-  <div class="status-bar">
-    <div class="status-item">
-      <span class="status-label">Status</span>
-      <div id="connectionStatus" class="status-indicator status-waiting pulse">
-        <span>●</span><span>WAITING...</span>
-      </div>
-    </div>
-    <div class="status-item">
-      <span class="status-label">Last Update</span>
-      <span id="lastUpdateTimestamp" style="color: var(--text); font-weight: 600;">--:--:--</span>
-    </div>
-    <div class="neural-badge">
-      <span>NEURAL ACTIVE</span>
-    </div>
-  </div>
-
-  <!-- neural stats -->
-  <div class="neural-stats-bar">
-    <div class="neural-stat">
-      <span class="neural-stat-label">Epochs</span>
-      <span id="trainingEpochs" class="neural-stat-value">0</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Accuracy</span>
-      <span id="modelAccuracy" class="neural-stat-value">0%</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Val Loss</span>
-      <span id="validationLoss" class="neural-stat-value">0.0000</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Predictions</span>
-      <span id="predictionCount" class="neural-stat-value">0</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Status</span>
-      <span id="trainingStatus" class="neural-stat-value" style="font-size: 1rem;">READY</span>
-    </div>
-  </div>
-
-  <!-- metrics grid -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Speed</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartSpeed" checked>
-          <label for="chartSpeed">Plot</label>
+  <div class="dashboard">
+    <div class="main-chart">
+      <div class="chart-header">
+        <div class="chart-title">📊 TELEMETRY ANALYSIS</div>
+        <div class="chart-controls">
+          <div class="control-group">
+            <label>View:</label>
+            <select id="chartType">
+              <option value="telemetry">Telemetry</option>
+              <option value="power-rpm">Power vs RPM</option>
+              <option value="torque-rpm">Torque vs RPM</option>
+              <option value="acceleration">Acceleration & Jerk</option>
+              <option value="energy-distance">Energy vs Distance</option>
+              <option value="soc-distance">SOC vs Distance</option>
+              <option value="voltage-current">V-I Curve</option>
+              <option value="speed-distance">Speed vs Distance</option>
+            </select>
+          </div>
         </div>
       </div>
-      <div id="speedValue" class="metric-value color-success">0.0</div>
-      <div class="metric-unit">km/h</div>
+      <div class="chart-wrapper">
+        <canvas id="telemetryChart"></canvas>
+      </div>
     </div>
 
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Voltage</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartVoltage" checked>
-          <label for="chartVoltage">Plot</label>
+    <div class="gauges">
+        <div class="gauge-container">
+            <canvas data-type="radial-gauge" id="speed-gauge"></canvas>
         </div>
-      </div>
-      <div id="voltageValue" class="metric-value color-primary">0.0</div>
-      <div class="metric-unit">V</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Current</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartCurrent" checked>
-          <label for="chartCurrent">Plot</label>
+        <div class="gauge-container">
+            <canvas data-type="radial-gauge" id="voltage-gauge"></canvas>
         </div>
-      </div>
-      <div id="currentValue" class="metric-value color-danger">0.0</div>
-      <div class="metric-unit">A</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Power</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartPower">
-          <label for="chartPower">Plot</label>
+        <div class="gauge-container">
+            <canvas data-type="radial-gauge" id="current-gauge"></canvas>
         </div>
-      </div>
-      <div id="powerValue" class="metric-value color-warning">0</div>
-      <div class="metric-unit">W</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">RPM</span>
-      </div>
-      <div id="rpmValue" class="metric-value color-accent">0</div>
-      <div class="metric-unit">rev/min</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Torque</span>
-      </div>
-      <div id="torqueValue" class="metric-value color-secondary">0.0</div>
-      <div class="metric-unit">Nm</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">SOC</span>
-      </div>
-      <div id="socValue" class="metric-value color-primary">100</div>
-      <div class="metric-unit">%</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Energy/km</span>
-      </div>
-      <div id="energyPerKmValue" class="metric-value color-warning">0.0</div>
-      <div class="metric-unit">Wh/km</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Accel</span>
-      </div>
-      <div id="accelValue" class="metric-value color-success">0.00</div>
-      <div class="metric-unit">m/s²</div>
-    </div>
-  </div>
-
-  <!-- chart section -->
-  <div class="chart-section">
-    <div class="chart-header">
-      <div class="chart-title">📊 TELEMETRY ANALYSIS</div>
-      <div class="chart-controls">
-        <div class="control-group">
-          <label>View:</label>
-          <select id="chartType">
-            <option value="telemetry">Telemetry</option>
-            <option value="power-rpm">Power vs RPM</option>
-            <option value="torque-rpm">Torque vs RPM</option>
-            <option value="acceleration">Acceleration & Jerk</option>
-            <option value="energy-distance">Energy vs Distance</option>
-            <option value="soc-distance">SOC vs Distance</option>
-            <option value="voltage-current">V-I Curve</option>
-            <option value="speed-distance">Speed vs Distance</option>
-          </select>
+        <div class="gauge-container">
+            <canvas data-type="radial-gauge" id="power-gauge"></canvas>
         </div>
+        <div class="gauge-container">
+            <canvas data-type="radial-gauge" id="rpm-gauge"></canvas>
+        </div>
+    </div>
+
+    <div class="secondary-charts">
+      <div class="chart-wrapper">
+        <canvas id="powerSpeedChart"></canvas>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="efficiencyChart"></canvas>
       </div>
     </div>
-    <div class="chart-wrapper">
-      <canvas id="telemetryChart"></canvas>
-    </div>
+
   </div>
 </div>
 
