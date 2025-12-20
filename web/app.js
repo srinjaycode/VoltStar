@@ -535,8 +535,6 @@ function updateChart() {
           tension: 0.4
         }
       ];
-      telemetryChart.options.scales.x.title = { display: true, text: 'Time', color: '#94a3b8' };
-      telemetryChart.options.scales.y.title = { display: true, text: 'Acceleration / Jerk', color: '#94a3b8' };
       break;
       
     case 'energy-distance':
@@ -578,7 +576,6 @@ function updateChart() {
         showLine: false
       }];
       
-      // add trend line if we got enough data
       if (telemetryData.current.length > 5) {
         const validPoints = telemetryData.current
           .map((c, i) => ({ x: c, y: telemetryData.voltage[i] }))
@@ -598,7 +595,7 @@ function updateChart() {
           const maxX = Math.max(...validPoints.map(p => p.x));
           
           datasets.push({
-            label: `trend line (R ≈ ${Math.abs(slope).toFixed(3)}Ω)`,
+            label: `trend (R ≈ ${Math.abs(slope).toFixed(3)}Ω)`,
             data: [
               { x: minX, y: slope * minX + intercept },
               { x: maxX, y: slope * maxX + intercept }
@@ -631,36 +628,27 @@ function updateChart() {
       telemetryChart.options.scales.y.title = { display: true, text: 'Speed (km/h)', color: '#94a3b8' };
       break;
       
-    default: // telemetry with dual y-axis
+    default: // telemetry - THIS IS THE ONE THATS BROKEN
       telemetryChart.options.scales.x.type = 'category';
       labels = telemetryData.timestamps;
       
-      // use dual y-axis if power is selected with other metrics
-      const isPowerSelected = document.getElementById('chartPower').checked;
-      const otherMetricsSelected = document.getElementById('chartSpeed').checked || 
-                                   document.getElementById('chartVoltage').checked || 
-                                   document.getElementById('chartCurrent').checked;
+      // yo get the checkbox states properly
+      const voltageChecked = document.getElementById('chartVoltage')?.checked || false;
+      const currentChecked = document.getElementById('chartCurrent')?.checked || false;
+      const powerChecked = document.getElementById('chartPower')?.checked || false;
       
-      const useDualAxis = isPowerSelected && otherMetricsSelected;
+      console.log('checkbox states:', voltageChecked, currentChecked, powerChecked); // debug this shit
+      
+      // use dual y-axis if power is selected with other metrics
+      const useDualAxis = powerChecked && (voltageChecked || currentChecked);
       
       if (useDualAxis) {
         telemetryChart.options.scales.y1.display = true;
-        telemetryChart.options.scales.y.title = { display: true, text: 'Speed/Voltage/Current', color: '#94a3b8' };
+        telemetryChart.options.scales.y.title = { display: true, text: 'V/A', color: '#94a3b8' };
         telemetryChart.options.scales.y1.title = { display: true, text: 'Power (W)', color: '#94a3b8' };
       }
       
-      if (document.getElementById('chartSpeed').checked) {
-        datasets.push({
-          label: 'Speed (km/h)',
-          data: telemetryData.speed,
-          borderColor: '#00ff88',
-          borderWidth: 2,
-          tension: 0.4,
-          pointRadius: 0,
-          yAxisID: 'y'
-        });
-      }
-      if (document.getElementById('chartVoltage').checked) {
+      if (voltageChecked) {
         datasets.push({
           label: 'Voltage (V)',
           data: telemetryData.voltage,
@@ -671,7 +659,8 @@ function updateChart() {
           yAxisID: 'y'
         });
       }
-      if (document.getElementById('chartCurrent').checked) {
+      
+      if (currentChecked) {
         datasets.push({
           label: 'Current (A)',
           data: telemetryData.current,
@@ -682,7 +671,8 @@ function updateChart() {
           yAxisID: 'y'
         });
       }
-      if (document.getElementById('chartPower').checked) {
+      
+      if (powerChecked) {
         datasets.push({
           label: 'Power (W)',
           data: telemetryData.power,
@@ -692,10 +682,6 @@ function updateChart() {
           pointRadius: 0,
           yAxisID: useDualAxis ? 'y1' : 'y'
         });
-      }
-      telemetryChart.options.scales.x.title = { display: false };
-      if (!useDualAxis) {
-        telemetryChart.options.scales.y.title = { display: false };
       }
   }
   
@@ -824,19 +810,182 @@ function updateTrainingStatus(status) {
 }
 
 function updateMetricsDisplay() {
-  document.getElementById('speedValue').textContent = currentData.speed.toFixed(1);
+  // Update speedometer
+  updateSpeedometer(currentData.speed);
+  
+  // Update battery gauge
+  updateBatteryGauge(currentData.soc, telemetryData.ampHours[telemetryData.ampHours.length - 1] || 0);
+  
+  // Update other metrics
   document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
   document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
   document.getElementById('powerValue').textContent = currentData.power.toFixed(0);
   document.getElementById('rpmValue').textContent = currentData.rpm;
   document.getElementById('torqueValue').textContent = currentData.torque.toFixed(1);
-  document.getElementById('socValue').textContent = currentData.soc.toFixed(0);
+  document.getElementById('energyPerKmValue').textContent = currentData.energyPerKm.toFixed(1);
   
   const accelElem = document.getElementById('accelValue');
   if (accelElem) accelElem.textContent = currentData.acceleration.toFixed(2);
   
-  const energyElem = document.getElementById('energyPerKmValue');
-  if (energyElem) energyElem.textContent = currentData.energyPerKm.toFixed(1);
+  // Update colors
+  updateMetricColors();
+}
+
+// ADD THESE FUNCTIONS - Speedometer with graduations
+function updateSpeedometer(speed) {
+  const maxSpeed = 60; // 0-60 km/h range
+  const percentage = Math.min(speed / maxSpeed, 1);
+  
+  // Calculate angle (-135deg to +135deg = 270deg total)
+  const angle = -135 + (percentage * 270);
+  
+  // Update needle
+  const needle = document.getElementById('speedometer-needle');
+  if (needle) {
+    needle.style.transform = `rotate(${angle}deg)`;
+  }
+  
+  // Update arc
+  const arc = document.getElementById('speedometer-arc');
+  if (arc) {
+    const offset = 424 * (1 - percentage);
+    arc.style.strokeDashoffset = offset;
+    
+    // Dynamic color
+    let color;
+    if (speed < 20) color = '#00ff00';
+    else if (speed < 35) color = '#88ff00';
+    else if (speed < 50) color = '#ffaa00';
+    else color = '#ff0000';
+    
+    arc.style.stroke = color;
+  }
+  
+  // Update dot color
+  const dot = document.getElementById('speedometer-dot');
+  if (dot) {
+    let color;
+    if (speed < 20) color = '#00ff00';
+    else if (speed < 35) color = '#88ff00';
+    else if (speed < 50) color = '#ffaa00';
+    else color = '#ff0000';
+    
+    dot.style.fill = color;
+    dot.style.filter = `drop-shadow(0 0 8px ${color})`;
+  }
+  
+  // Update text color
+  const speedValue = document.getElementById('speedValue');
+  if (speedValue) {
+    let color, glow;
+    if (speed < 20) {
+      color = '#00ff00';
+      glow = '0 0 15px rgba(0, 255, 0, 0.8)';
+    } else if (speed < 35) {
+      color = '#88ff00';
+      glow = '0 0 15px rgba(136, 255, 0, 0.8)';
+    } else if (speed < 50) {
+      color = '#ffaa00';
+      glow = '0 0 15px rgba(255, 170, 0, 0.8)';
+    } else {
+      color = '#ff0000';
+      glow = '0 0 15px rgba(255, 0, 0, 0.8)';
+    }
+    
+    speedValue.style.color = color;
+    speedValue.style.textShadow = glow;
+  }
+}
+
+// Battery with proportional fill
+function updateBatteryGauge(soc, ah) {
+  const batteryWidth = 130;
+  const fillWidth = (soc / 100) * batteryWidth;
+  
+  const fill = document.getElementById('battery-fill');
+  if (fill) {
+    fill.setAttribute('width', fillWidth);
+    
+    // Dynamic color
+    let color;
+    if (soc >= 80) color = '#00ff00';
+    else if (soc >= 60) color = '#88ff00';
+    else if (soc >= 40) color = '#ffff00';
+    else if (soc >= 20) color = '#ffaa00';
+    else color = '#ff0000';
+    
+    fill.style.fill = color;
+    fill.style.filter = `drop-shadow(0 0 6px ${color})`;
+  }
+  
+  const batteryText = document.getElementById('battery-text');
+  if (batteryText) {
+    batteryText.textContent = `${Math.round(soc)}%`;
+    batteryText.style.fill = soc >= 60 ? '#ffffff' : '#000000';
+  }
+  
+  const socValue = document.getElementById('socValue');
+  if (socValue) {
+    let color, glow;
+    if (soc >= 80) {
+      color = '#00ff00';
+      glow = '0 0 15px rgba(0, 255, 0, 0.8)';
+    } else if (soc >= 60) {
+      color = '#88ff00';
+      glow = '0 0 15px rgba(136, 255, 0, 0.8)';
+    } else if (soc >= 40) {
+      color = '#ffff00';
+      glow = '0 0 15px rgba(255, 255, 0, 0.8)';
+    } else if (soc >= 20) {
+      color = '#ffaa00';
+      glow = '0 0 15px rgba(255, 170, 0, 0.8)';
+    } else {
+      color = '#ff0000';
+      glow = '0 0 15px rgba(255, 0, 0, 0.8)';
+    }
+    
+    socValue.style.color = color;
+    socValue.style.textShadow = glow;
+  }
+  
+  const ahValue = document.getElementById('ahValue');
+  if (ahValue) {
+    ahValue.textContent = ah.toFixed(2);
+  }
+}
+
+// Update metric colors
+function updateMetricColors() {
+  // Voltage
+  const voltagePercent = (currentData.voltage / VEHICLE_CONSTANTS.maxVoltage) * 100;
+  let voltageColor;
+  if (voltagePercent >= 90) voltageColor = { color: '#00ff00', glow: '0 0 15px rgba(0, 255, 0, 0.8)' };
+  else if (voltagePercent >= 75) voltageColor = { color: '#88ff00', glow: '0 0 15px rgba(136, 255, 0, 0.8)' };
+  else if (voltagePercent >= 60) voltageColor = { color: '#ffff00', glow: '0 0 15px rgba(255, 255, 0, 0.8)' };
+  else if (voltagePercent >= 50) voltageColor = { color: '#ffaa00', glow: '0 0 15px rgba(255, 170, 0, 0.8)' };
+  else voltageColor = { color: '#ff0000', glow: '0 0 15px rgba(255, 0, 0, 0.8)' };
+  
+  const voltageEl = document.getElementById('voltageValue');
+  if (voltageEl) {
+    voltageEl.style.color = voltageColor.color;
+    voltageEl.style.textShadow = voltageColor.glow;
+  }
+  
+  // Similar for other metrics...
+  const currentPercent = Math.abs(currentData.current / VEHICLE_CONSTANTS.maxCurrent) * 100;
+  let currentColor;
+  if (currentPercent < 40) currentColor = { color: '#00ff00', glow: '0 0 15px rgba(0, 255, 0, 0.8)' };
+  else if (currentPercent < 60) currentColor = { color: '#88ff00', glow: '0 0 15px rgba(136, 255, 0, 0.8)' };
+  else if (currentPercent < 80) currentColor = { color: '#ffaa00', glow: '0 0 15px rgba(255, 170, 0, 0.8)' };
+  else currentColor = { color: '#ff0000', glow: '0 0 15px rgba(255, 0, 0, 0.8)' };
+  
+  const currentEl = document.getElementById('currentValue');
+  if (currentEl) {
+    currentEl.style.color = currentColor.color;
+    currentEl.style.textShadow = currentColor.glow;
+  }
+  
+  // Power, RPM, Torque, Energy, Accel - similar pattern
 }
 
 function updateDiagnostics() {
@@ -1405,148 +1554,12 @@ async function handleUserMessage() {
     }
   }
   
-  // Combine all responses
-  response = responses.join('\n\n' + '─'.repeat(50) + '\n\n');
+  // Combine all responses (yo those lines were way too long)
+  response = responses.join('\n\n' + '─'.repeat(15) + '\n\n');
   
   // If training was triggered, suggestions are already included
   if (categories.includes('training') && categories.includes('suggestions')) {
     // Avoid duplicate suggestions
-  }
-  
-  addAIMessage(response, 'ai');
-}
-
-// enhanced keyword recognition and responses
-async function handleUserMessage() {
-  const input = document.getElementById('aiInput');
-  if (!input) return;
-  
-  const message = input.value.trim();
-  if (!message) return;
-  
-  addAIMessage(message, 'user');
-  input.value = '';
-  
-  const lowerMsg = message.toLowerCase();
-  let response = '';
-  
-  // training keywords
-  if (lowerMsg.includes('train') || lowerMsg.includes('learn') || lowerMsg.includes('teach') || lowerMsg.includes('practice')) {
-    response = 'alright, firing up the training sequence... lets make this model smarter! 🧠\n\n';
-    await trainNeuralNetwork();
-    response += await generateNeuralSuggestions();
-  } 
-  // suggestion keywords
-  else if (lowerMsg.includes('suggest') || lowerMsg.includes('recommend') || lowerMsg.includes('advise') || 
-           lowerMsg.includes('tip') || lowerMsg.includes('help') || lowerMsg.includes('improve') || 
-           lowerMsg.includes('optimize') || lowerMsg.includes('better')) {
-    response = await generateNeuralSuggestions();
-  }
-  // power/torque keywords
-  else if (lowerMsg.includes('power') || lowerMsg.includes('torque') || lowerMsg.includes('watt') || 
-           lowerMsg.includes('rpm') || lowerMsg.includes('motor') || lowerMsg.includes('acceleration') ||
-           lowerMsg.includes('speed up') || lowerMsg.includes('faster')) {
-    response = `⚡ power & performance breakdown:\n\n`;
-    response += `current power: ${currentData.power.toFixed(0)}W (${((currentData.power/VEHICLE_CONSTANTS.maxPower)*100).toFixed(1)}% of max)\n`;
-    response += `torque: ${currentData.torque.toFixed(2)} Nm @ ${currentData.rpm} RPM\n`;
-    response += `acceleration: ${currentData.acceleration.toFixed(2)} m/s²\n\n`;
-    const limits = calculatePhysicalLimits(currentData);
-    response += `optimal power for this speed: ${limits.optimalPower.toFixed(0)}W\n`;
-    response += `optimal rpm: ${limits.optimalRPM.toFixed(0)}\n\n`;
-    response += await generateNeuralSuggestions();
-  }
-  // efficiency/energy keywords
-  else if (lowerMsg.includes('efficiency') || lowerMsg.includes('energy') || lowerMsg.includes('battery') || 
-           lowerMsg.includes('range') || lowerMsg.includes('consumption') || lowerMsg.includes('wh/km') ||
-           lowerMsg.includes('save') || lowerMsg.includes('economical')) {
-    response = `🔋 energy & efficiency analysis:\n\n`;
-    response += `energy consumption: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-    response += `battery charge: ${currentData.soc.toFixed(1)}%\n`;
-    response += `distance covered: ${currentData.distance.toFixed(2)} km\n\n`;
-    const limits = calculatePhysicalLimits(currentData);
-    response += `aerodynamic drag: ${limits.dragPower.toFixed(0)}W\n`;
-    response += `rolling resistance: ${limits.rollingPower.toFixed(0)}W\n`;
-    response += `total resistance: ${limits.resistancePower.toFixed(0)}W\n\n`;
-    const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / currentData.energyPerKm;
-    response += `estimated range: ${estimatedRange.toFixed(1)} km\n\n`;
-    response += await generateNeuralSuggestions();
-  }
-  // status/current keywords
-  else if (lowerMsg.includes('status') || lowerMsg.includes('current') || lowerMsg.includes('now') || 
-           lowerMsg.includes('stats') || lowerMsg.includes('data') || lowerMsg.includes('info') ||
-           lowerMsg.includes('what') || lowerMsg.includes('how')) {
-    response = `📊 current ride stats:\n\n`;
-    response += `speed: ${currentData.speed.toFixed(1)} km/h\n`;
-    response += `power: ${currentData.power.toFixed(0)}W\n`;
-    response += `torque: ${currentData.torque.toFixed(2)} Nm\n`;
-    response += `rpm: ${currentData.rpm}\n`;
-    response += `voltage: ${currentData.voltage.toFixed(1)}V\n`;
-    response += `current: ${currentData.current.toFixed(1)}A\n`;
-    response += `battery: ${currentData.soc.toFixed(1)}%\n`;
-    response += `distance: ${currentData.distance.toFixed(2)} km\n`;
-    response += `energy/km: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-  }
-  // diagnostics keywords
-  else if (lowerMsg.includes('diagnostic') || lowerMsg.includes('check') || lowerMsg.includes('problem') || 
-           lowerMsg.includes('issue') || lowerMsg.includes('wrong') || lowerMsg.includes('health')) {
-    response = `🔍 running diagnostics...\n\n`;
-    
-    if (currentData.soc < 20) {
-      response += `⚠️ battery critically low! find a charger asap\n`;
-    }
-    if (currentData.power > VEHICLE_CONSTANTS.maxPower * 0.9) {
-      response += `⚠️ motor at max capacity - ease off to prevent overheating\n`;
-    }
-    if (currentData.energyPerKm > 50) {
-      response += `⚠️ energy consumption very high - check riding style\n`;
-    }
-    
-    const limits = calculatePhysicalLimits(currentData);
-    if (currentData.current > 0.5) {
-      const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
-      const internalR = Math.abs(voltageSag / currentData.current);
-      if (internalR > 0.3) {
-        response += `⚠️ battery internal resistance elevated (${internalR.toFixed(3)}Ω) - cells might be aging\n`;
-      }
-    }
-    
-    if (response === `🔍 running diagnostics...\n\n`) {
-      response += `✅ all systems looking good!\n`;
-    }
-    
-    response += `\ncheck the diagnostics tab for detailed analysis`;
-  }
-  // comparison/prediction keywords
-  else if (lowerMsg.includes('predict') || lowerMsg.includes('forecast') || lowerMsg.includes('expect') ||
-           lowerMsg.includes('compare') || lowerMsg.includes('difference') || lowerMsg.includes('should')) {
-    response = await generateNeuralSuggestions();
-  }
-  // greeting keywords
-  else if (lowerMsg.includes('hello') || lowerMsg.includes('hi ') || lowerMsg.includes('hey') ||
-           lowerMsg.includes('sup') || lowerMsg.includes('yo')) {
-    response = `hey there! 👋 im your neural ai assistant, trained on ${trainingEpochs} epochs with ${modelAccuracy.toFixed(1)}% accuracy\n\n`;
-    response += `im here to help you optimize your ride! try asking me about:\n`;
-    response += `• power & performance\n`;
-    response += `• efficiency & battery\n`;
-    response += `• current stats\n`;
-    response += `• diagnostics\n`;
-    response += `• suggestions for improvement\n\n`;
-    response += `just talk to me naturally, i understand lots of keywords!`;
-  }
-  // thanks keywords
-  else if (lowerMsg.includes('thank') || lowerMsg.includes('thanks') || lowerMsg.includes('thx')) {
-    response = `no problem! happy to help 😊\n\njust lemme know if you need anything else about your ride`;
-  }
-  // default help response
-  else {
-    response = `🧠 voltstar neural ai here!\n\n`;
-    response += `not sure what youre asking about, but here's what i can do:\n\n`;
-    response += `💪 POWER STUFF: ask about power, torque, rpm, acceleration\n`;
-    response += `🔋 ENERGY STUFF: efficiency, battery, range, consumption\n`;
-    response += `📊 DATA STUFF: current status, stats, diagnostics\n`;
-    response += `🎯 OPTIMIZATION: suggestions, recommendations, tips\n`;
-    response += `🧠 TRAINING: tell me to train/learn for better predictions\n\n`;
-    response += `just ask me naturally! i understand lots of keywords and phrases`;
   }
   
   addAIMessage(response, 'ai');
@@ -1651,6 +1664,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   
+  // yo we gotta update diagnostics regularly or it stays empty like a ghost town
+  setInterval(() => {
+    const diagTab = document.getElementById('diagnosticsTab');
+    if (diagTab && diagTab.classList.contains('active') && telemetryData.speed.length > 0) {
+      updateDiagnostics();
+    }
+  }, 2000); // update every 2 seconds when diagnostics tab is open
+
+// force diagnostics update every 3 seconds if we got data
+setInterval(() => {
+  if (telemetryData.speed.length > 0) {
+    console.log('updating diagnostics, data points:', telemetryData.speed.length);
+    updateDiagnostics();
+  }
+}, 3000);
+
+console.log('✅ application initialized');
+
   console.log('✅ application initialized');
   addTrainingLog('voltstar neural ai ready', 'success');
   addTrainingLog('waiting for telemetry data...', 'info');
@@ -1658,5 +1689,258 @@ document.addEventListener('DOMContentLoaded', async () => {
   // add welcome message to chat
   addAIMessage('hey! 👋 neural ai here and ready to analyze your ride\n\nstart sending telemetry data and ill learn from it in real-time. ask me anything about power, efficiency, battery, or performance!', 'ai');
 });
+
+// ADD THESE FUNCTIONS TO YOUR app.js FILE
+
+// Function to get color based on value and thresholds
+function getValueColor(value, thresholds) {
+  // thresholds: { excellent, good, moderate, warning }
+  if (value <= thresholds.excellent) return { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
+  if (value <= thresholds.good) return { color: 'var(--color-good)', glow: 'var(--glow-green)' };
+  if (value <= thresholds.moderate) return { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
+  if (value <= thresholds.warning) return { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
+  return { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
+}
+
+// Update speedometer gauge
+function updateSpeedometer(speed) {
+  const maxSpeed = VEHICLE_CONSTANTS.maxSpeed;
+  const percentage = Math.min(speed / maxSpeed, 1);
+  const arcLength = 251.2; // Full arc length
+  const offset = arcLength * (1 - percentage);
+  
+  // Update arc
+  const arc = document.getElementById('speedometer-arc');
+  if (arc) {
+    arc.style.strokeDashoffset = offset;
+  }
+  
+  // Update needle (rotate from -90deg to 90deg)
+  const angle = -90 + (percentage * 180);
+  const needle = document.getElementById('speedometer-needle');
+  if (needle) {
+    needle.style.transform = `rotate(${angle}deg)`;
+  }
+  
+  // Update color based on speed
+  const thresholds = {
+    excellent: maxSpeed * 0.3,
+    good: maxSpeed * 0.5,
+    moderate: maxSpeed * 0.7,
+    warning: maxSpeed * 0.9
+  };
+  const colorData = getValueColor(speed, thresholds);
+  
+  const dot = document.getElementById('speedometer-dot');
+  if (dot) {
+    dot.style.fill = colorData.color;
+    dot.style.filter = `drop-shadow(0 0 10px ${colorData.color})`;
+  }
+  
+  const speedValue = document.getElementById('speedValue');
+  if (speedValue) {
+    speedValue.style.color = colorData.color;
+    speedValue.style.textShadow = colorData.glow;
+  }
+}
+
+// Update battery gauge
+function updateBatteryGauge(soc, ah) {
+  const maxWidth = 130; // Max width of battery fill
+  const fillWidth = (soc / 100) * maxWidth;
+  
+  // Update fill width
+  const fill = document.getElementById('battery-fill');
+  if (fill) {
+    fill.setAttribute('width', fillWidth);
+  }
+  
+  // Update color based on SOC
+  const thresholds = {
+    excellent: 100, // Reversed - higher is better
+    good: 60,
+    moderate: 40,
+    warning: 20
+  };
+  
+  let colorData;
+  if (soc >= 80) colorData = { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
+  else if (soc >= 60) colorData = { color: 'var(--color-good)', glow: 'var(--glow-green)' };
+  else if (soc >= 40) colorData = { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
+  else if (soc >= 20) colorData = { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
+  else colorData = { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
+  
+  if (fill) {
+    fill.style.fill = colorData.color;
+  }
+  
+  const batteryText = document.getElementById('battery-text');
+  if (batteryText) {
+    batteryText.textContent = `${Math.round(soc)}%`;
+    batteryText.style.fill = colorData.color;
+  }
+  
+  const socValue = document.getElementById('socValue');
+  if (socValue) {
+    socValue.style.color = colorData.color;
+    socValue.style.textShadow = colorData.glow;
+  }
+  
+  // Update ah display
+  const ahValue = document.getElementById('ahValue');
+  if (ahValue) {
+    ahValue.textContent = ah.toFixed(2);
+  }
+}
+
+// Update metric cards with conditional colors
+function updateMetricColors() {
+  // Voltage - based on percentage of max
+  const voltagePercent = (currentData.voltage / VEHICLE_CONSTANTS.maxVoltage) * 100;
+  const voltageThresholds = { excellent: 100, good: 75, moderate: 60, warning: 50 };
+  let voltageColor;
+  if (voltagePercent >= 90) voltageColor = getValueColor(100, voltageThresholds);
+  else if (voltagePercent >= 75) voltageColor = getValueColor(80, voltageThresholds);
+  else if (voltagePercent >= 60) voltageColor = getValueColor(65, voltageThresholds);
+  else if (voltagePercent >= 50) voltageColor = getValueColor(55, voltageThresholds);
+  else voltageColor = getValueColor(40, voltageThresholds);
+  
+  const voltageEl = document.getElementById('voltageValue');
+  if (voltageEl) {
+    voltageEl.style.color = voltageColor.color;
+    voltageEl.style.textShadow = voltageColor.glow;
+  }
+  
+  // Current - based on percentage of max
+  const currentPercent = Math.abs(currentData.current / VEHICLE_CONSTANTS.maxCurrent) * 100;
+  const currentThresholds = { excellent: 30, good: 50, moderate: 70, warning: 90 };
+  const currentColor = getValueColor(currentPercent, currentThresholds);
+  
+  const currentEl = document.getElementById('currentValue');
+  if (currentEl) {
+    currentEl.style.color = currentColor.color;
+    currentEl.style.textShadow = currentColor.glow;
+  }
+  
+  // Power - based on percentage of max
+  const powerPercent = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
+  const powerThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const powerColor = getValueColor(powerPercent, powerThresholds);
+  
+  const powerEl = document.getElementById('powerValue');
+  if (powerEl) {
+    powerEl.style.color = powerColor.color;
+    powerEl.style.textShadow = powerColor.glow;
+  }
+  
+  // RPM - based on percentage of max
+  const rpmPercent = (currentData.rpm / VEHICLE_CONSTANTS.maxRPM) * 100;
+  const rpmThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const rpmColor = getValueColor(rpmPercent, rpmThresholds);
+  
+  const rpmEl = document.getElementById('rpmValue');
+  if (rpmEl) {
+    rpmEl.style.color = rpmColor.color;
+    rpmEl.style.textShadow = rpmColor.glow;
+  }
+  
+  // Torque - based on percentage of max
+  const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
+  const torqueThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const torqueColor = getValueColor(torquePercent, torqueThresholds);
+  
+  const torqueEl = document.getElementById('torqueValue');
+  if (torqueEl) {
+    torqueEl.style.color = torqueColor.color;
+    torqueEl.style.textShadow = torqueColor.glow;
+  }
+  
+  // Energy per km - lower is better
+  const energyThresholds = { excellent: 15, good: 25, moderate: 35, warning: 50 };
+  const energyColor = getValueColor(currentData.energyPerKm, energyThresholds);
+  
+  const energyEl = document.getElementById('energyPerKmValue');
+  if (energyEl) {
+    energyEl.style.color = energyColor.color;
+    energyEl.style.textShadow = energyColor.glow;
+  }
+  
+  // Acceleration - based on absolute value
+  const accelThresholds = { excellent: 1, good: 2, moderate: 3, warning: 4 };
+  const accelColor = getValueColor(Math.abs(currentData.acceleration), accelThresholds);
+  
+  const accelEl = document.getElementById('accelValue');
+  if (accelEl) {
+    accelEl.style.color = accelColor.color;
+    accelEl.style.textShadow = accelColor.glow;
+  }
+}
+
+// MODIFY your updateMetricsDisplay() function to call these new functions:
+function updateMetricsDisplay() {
+  // Update speedometer
+  updateSpeedometer(currentData.speed);
+  
+  // Update battery gauge
+  updateBatteryGauge(currentData.soc, telemetryData.ampHours[telemetryData.ampHours.length - 1] || 0);
+  
+  // Update other metrics
+  document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
+  document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
+  document.getElementById('powerValue').textContent = currentData.power.toFixed(0);
+  document.getElementById('rpmValue').textContent = currentData.rpm;
+  document.getElementById('torqueValue').textContent = currentData.torque.toFixed(1);
+  document.getElementById('energyPerKmValue').textContent = currentData.energyPerKm.toFixed(1);
+  
+  const accelElem = document.getElementById('accelValue');
+  if (accelElem) accelElem.textContent = currentData.acceleration.toFixed(2);
+  
+  // Update colors for all metrics
+  updateMetricColors();
+}
+
+// ALSO UPDATE the calculateTruePhysicalParameters function to handle missing ah:
+function calculateTruePhysicalParameters(dataPoint, index) {
+  const { speed, voltage, current, rpm, distance } = dataPoint;
+  
+  const power = voltage * current;
+  const omega = (2 * Math.PI * rpm) / 60;
+  const torque = omega > 0 ? power / omega : 0;
+  
+  let acceleration = 0;
+  if (index > 0) {
+    const prevSpeed = telemetryData.speed[index - 1] || speed;
+    const dt = 1;
+    const speedMs = speed / 3.6;
+    const prevSpeedMs = prevSpeed / 3.6;
+    acceleration = (speedMs - prevSpeedMs) / dt;
+  }
+  
+  let jerk = 0;
+  if (index > 1) {
+    const prevAccel = telemetryData.acceleration[index - 1] || acceleration;
+    const dt = 1;
+    jerk = (acceleration - prevAccel) / dt;
+  }
+  
+  const prevEnergy = index > 0 ? (telemetryData.energy[index - 1] || 0) : 0;
+  const energy = prevEnergy + (power / 3600);
+  
+  // FIX: Handle missing ah by integrating from current
+  let ampHours;
+  if (dataPoint.ah !== undefined && dataPoint.ah !== null) {
+    // Use provided ah value
+    ampHours = parseFloat(dataPoint.ah);
+  } else {
+    // Integrate from current (dt = 1 second)
+    const prevAh = index > 0 ? (telemetryData.ampHours[index - 1] || 0) : 0;
+    ampHours = prevAh + (current / 3600); // Ah = A * hours (1 second = 1/3600 hour)
+  }
+  
+  const totalAh = VEHICLE_CONSTANTS.batteryCapacity;
+  const soc = Math.max(0, Math.min(100, 100 - (ampHours / totalAh) * 100));
+  
+  return { power, torque, acceleration, jerk, energy, soc, ampHours };
+}
 
 console.log('🎯 voltstar neural ai ready!')
