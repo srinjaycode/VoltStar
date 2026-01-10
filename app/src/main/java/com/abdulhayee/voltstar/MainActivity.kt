@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,7 +25,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -41,8 +41,6 @@ import com.google.firebase.database.DatabaseReference
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.absoluteValue
@@ -113,6 +111,7 @@ class VoltStarApplication : Application() {
         super.onCreate()
         instance = this
         FirebaseApp.initializeApp(this)
+
         FirebaseDatabase.getInstance().apply {
             setPersistenceEnabled(true)
             setPersistenceCacheSizeBytes(10 * 1024 * 1024)
@@ -155,15 +154,12 @@ class CycleAnalystRepository {
                     val allBytes = inputStream.readBytes()
                     val currentSize = allBytes.size.toLong()
 
-                    // Check if file was reset or truncated
                     if (currentSize < lastFileSize) {
                         Log.d(Constants.TAG, "File reset detected (was: $lastFileSize, now: $currentSize)")
                         lastFileSize = 0L
                     }
 
-                    // Only read if there's new data
                     if (currentSize > lastFileSize) {
-                        // Extract only the new portion
                         val newBytes = if (lastFileSize > 0) {
                             allBytes.sliceArray(lastFileSize.toInt() until allBytes.size)
                         } else {
@@ -186,9 +182,7 @@ class CycleAnalystRepository {
                         }
 
                         lastFileSize = currentSize
-                        Log.d(Constants.TAG, "Parsed $parsedCount valid data points from ${lines.size} lines, file position now: $lastFileSize bytes")
-                    } else if (currentSize == lastFileSize) {
-                        Log.d(Constants.TAG, "No new data (size unchanged: $currentSize bytes)")
+                        Log.d(Constants.TAG, "Parsed $parsedCount valid data points from ${lines.size} lines")
                     }
                 }
             } ?: run {
@@ -222,35 +216,19 @@ class CycleAnalystRepository {
                     success = true
 
                     if (Constants.DEBUG) {
-                        Log.d(Constants.TAG, "Batch sent successfully: ${batch.size} items")
+                        Log.d(Constants.TAG, "✓ Batch sent successfully: ${batch.size} items")
                     }
                 } catch (e: Exception) {
                     retries++
                     _connectionState.value = false
-                    Log.e(Constants.TAG, "Failed to send batch: ${e.message}", e)
+                    Log.e(Constants.TAG, "✗ Failed to send batch (attempt $retries): ${e.message}", e)
 
                     if (retries < 3) {
-                        delay(1000L * retries) // Exponential backoff
+                        delay(1000L * retries)
                     } else {
                         throw e
                     }
                 }
-            }
-        }
-    }
-    suspend fun sendSingleData(data: CycleData) {
-        withContext(Dispatchers.IO) {
-            try {
-                readingsRef.push().setValue(data.toFirebaseMap()).await()
-                _connectionState.value = true
-
-                if (Constants.DEBUG) {
-                    Log.d(Constants.TAG, "Single data sent: V=${data.voltage}, A=${data.current}, Speed=${data.speed}")
-                }
-            } catch (e: Exception) {
-                _connectionState.value = false
-                Log.e(Constants.TAG, "Failed to send data: ${e.message}", e)
-                // Don't throw - allow monitoring to continue
             }
         }
     }
@@ -264,12 +242,10 @@ class OptimizedLineParser {
     fun parseLine(line: String): CycleData? {
         val trimmed = line.trim()
 
-        // Check cache first
         cache[trimmed]?.let {
             return it
         }
 
-        // Skip invalid lines
         if (trimmed.isEmpty() ||
             trimmed.contains("ah", ignoreCase = true) ||
             trimmed.contains("voltage", ignoreCase = true) ||
@@ -294,7 +270,6 @@ class OptimizedLineParser {
                 rpm = parts[6].toDoubleOrNull() ?: 0.0
             )
 
-            // ← ADD VALIDATION
             if (data.voltage < 0 || data.voltage > 100) {
                 Log.w(Constants.TAG, "Invalid voltage: ${data.voltage}")
                 return null
@@ -304,13 +279,12 @@ class OptimizedLineParser {
                 return null
             }
 
-            // Cache if not full
             if (cache.size < Constants.MAX_LOG_ENTRIES) {
                 cache[trimmed] = data
             }
 
             if (Constants.DEBUG) {
-                Log.d(Constants.TAG, "✓ Parsed: V=${data.voltage}V, A=${data.current}A, Speed=${data.speed}km/h, Power=${data.power}W")
+                Log.d(Constants.TAG, "✓ Parsed: V=${data.voltage}V, A=${data.current}A, Speed=${data.speed}km/h")
             }
             data
         } catch (e: Exception) {
@@ -347,47 +321,44 @@ class CycleAnalystViewModel(
             monitoringLoop(context)
         }
 
-        Log.d(Constants.TAG, "=== Monitoring started ===")
+        Log.d(Constants.TAG, "=== File monitoring started ===")
     }
 
     private suspend fun monitoringLoop(context: Context) {
         coroutineScope {
             while (isActive) {
                 try {
-                    val newData = repository.readNewData(context)
+                    val newDataList = repository.readNewData(context)
 
-                    if (newData.isNotEmpty()) {
-                        Log.d(Constants.TAG, "Processing ${newData.size} new data points")
+                    if (newDataList.isNotEmpty()) {
+                        val latestData = newDataList.last()
+                        _uiState.value = UiState.Success(latestData)
 
-                        // Update UI with the most recent data
-                        _uiState.value = UiState.Success(newData.last())
+                        dataBuffer.addAll(newDataList)
+                        totalLinesProcessed += newDataList.size
 
-                        // ← REPLACE INDIVIDUAL SENDS WITH BUFFER
-                        dataBuffer.addAll(newData)
-                        totalLinesProcessed += newData.size
-
-                        // Send batch every 10 points OR every 5 seconds
                         val now = System.currentTimeMillis()
-                        if (dataBuffer.size >= 10 || (now - lastBatchSend) >= 5000) {
+                        if (dataBuffer.size >= Constants.BATCH_SIZE || (now - lastBatchSend) >= 5000) {
                             repository.sendBatchToFirebase(dataBuffer.toList())
                             dataBuffer.clear()
                             lastBatchSend = now
-                            Log.d(Constants.TAG, "Batch sent to Firebase")
-                        }
 
-                        Log.d(Constants.TAG, "Total lines processed this session: $totalLinesProcessed")
+                            if (Constants.DEBUG) {
+                                Log.d(Constants.TAG, "✓ Processed: ${newDataList.size} new lines (Total: $totalLinesProcessed)")
+                            }
+                        }
                     }
 
                     delay(Constants.MONITORING_INTERVAL_MS)
 
                 } catch (e: CancellationException) {
-                    // Flush remaining buffer before stopping
                     if (dataBuffer.isNotEmpty()) {
-                        repository.sendBatchToFirebase(dataBuffer.toList()) }
-                    throw e // Re-throw cancellation exceptions
+                        repository.sendBatchToFirebase(dataBuffer.toList())
+                    }
+                    throw e
                 } catch (e: Exception) {
                     Log.e(Constants.TAG, "Monitoring error: ${e.message}", e)
-                    _uiState.value = UiState.Error("Monitoring error: ${e.message}")
+                    _uiState.value = UiState.Error("File error: ${e.message}")
                     delay(Constants.ERROR_RETRY_DELAY_MS)
                 }
             }
@@ -420,17 +391,15 @@ class CycleAnalystViewModel(
 }
 
 // Theme colors
-object VoltStarTheme {
-    val PinkPurpleGradient = Brush.horizontalGradient(
-        listOf(Color(0xFFE91E63), Color(0xFF9C27B0))
-    )
-    val RacingRed = Color(0xFFFF1744)
-    val NeonGreen = Color(0xFF00E676)
-    val RacingBlue = Color(0xFF00BCD4)
-    val RacingOrange = Color(0xFFFF9800)
-    val BackgroundDark = Color(0xFF0A0A0A)
-    val SurfaceDark = Color(0xFF1A1A1A)
-    val TextSecondary = Color(0xFF888888)
+object DashboardTheme {
+    val MainBlack = Color(0xFF0D0D0D)
+    val CardBlack = Color(0xFF1A1A1A)
+    val Red = Color(0xFFFF3B30)
+    val Yellow = Color(0xFFFFCC00)
+    val Green = Color(0xFF34C759)
+    val Blue = Color(0xFF007AFF)
+    val TextPrimary = Color(0xFFFFFFFF)
+    val TextSecondary = Color(0xFF8E8E93)
 }
 
 // Main Activity
@@ -443,10 +412,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    background = Color.Black,
-                    surface = VoltStarTheme.BackgroundDark,
-                    primary = Color(0xFFE91E63),
-                    secondary = Color(0xFF9C27B0)
+                    background = DashboardTheme.MainBlack,
+                    surface = DashboardTheme.CardBlack,
+                    primary = DashboardTheme.Blue,
+                    secondary = DashboardTheme.Green
                 )
             ) {
                 Surface(
@@ -498,7 +467,7 @@ fun CycleAnalystApp(
                 )
             }
             is UiState.Success -> {
-                OptimizedDashboard(
+                ModernDashboard(
                     data = state.data,
                     isConnected = isConnected,
                     onStop = { viewModel.reset() },
@@ -518,414 +487,461 @@ fun CycleAnalystApp(
     }
 }
 
-// Dashboard with metrics display
+// Modern Dashboard (No Scrolling)
 @Composable
-fun OptimizedDashboard(
+fun ModernDashboard(
     data: CycleData,
     isConnected: Boolean,
     onStop: () -> Unit,
     onRefresh: () -> Unit
 ) {
+    val speedColor = DashboardTheme.Green
     val voltageColor = remember(data.voltage) {
         when {
-            data.voltage < Constants.VOLTAGE_MIN -> VoltStarTheme.RacingRed
-            data.voltage > Constants.VOLTAGE_MAX -> VoltStarTheme.RacingRed
-            data.voltage < Constants.VOLTAGE_WARNING -> VoltStarTheme.RacingOrange
-            else -> Color(0xFFE91E63)
+            data.voltage < Constants.VOLTAGE_MIN -> DashboardTheme.Red
+            data.voltage > Constants.VOLTAGE_MAX -> DashboardTheme.Red
+            data.voltage < Constants.VOLTAGE_WARNING -> DashboardTheme.Yellow
+            else -> DashboardTheme.Green
         }
     }
-
     val currentColor = remember(data.current) {
         when {
-            data.current.absoluteValue > Constants.CURRENT_WARNING -> VoltStarTheme.RacingRed
-            data.current > 0 -> VoltStarTheme.RacingRed
-            else -> VoltStarTheme.NeonGreen
+            data.current.absoluteValue > Constants.CURRENT_WARNING -> DashboardTheme.Red
+            data.current < 0 -> DashboardTheme.Green
+            else -> DashboardTheme.Yellow
         }
     }
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .background(DashboardTheme.MainBlack)
     ) {
-        // Primary metrics column
-        Column(
-            modifier = Modifier.weight(2f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            LargeMetricCard(
-                label = "SPEED",
-                value = "%.1f".format(data.speed),
-                unit = "km/h",
-                color = VoltStarTheme.NeonGreen,
-                modifier = Modifier.weight(1f)
-            )
-            LargeMetricCard(
-                label = "VOLTAGE",
-                value = "%.1f".format(data.voltage),
-                unit = "V",
-                color = voltageColor,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Secondary metrics column
-        Column(
-            modifier = Modifier.weight(1.5f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricCard(
-                label = "CURRENT",
-                value = "%.1f".format(data.current),
-                unit = "A",
-                color = currentColor,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                label = "RPM",
-                value = "%.0f".format(data.rpm),
-                unit = "",
-                color = VoltStarTheme.RacingBlue,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                label = "DISTANCE",
-                value = "%.2f".format(data.distance),
-                unit = "km",
-                color = Color(0xFF00E5FF),
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Tertiary metrics column
-        Column(
-            modifier = Modifier.weight(1.5f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricCard(
-                label = "Ah USED",
-                value = "%.2f".format(data.ah),
-                unit = "Ah",
-                color = VoltStarTheme.RacingOrange,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                label = "DEGREE",
-                value = "%.1f".format(data.degree),
-                unit = "°",
-                color = Color(0xFFFFEB3B),
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                label = "POWER",
-                value = "%.0f".format(data.power),
-                unit = "W",
-                color = Color(0xFFFF5722),
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Controls column
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ControlCard(
-                onStop = onStop,
-                onRefresh = onRefresh,
-                modifier = Modifier.weight(1f)
-            )
-            StatusCard(
-                timestamp = data.timestamp,
-                isConnected = isConnected,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-// Large metric display card
-@Composable
-fun LargeMetricCard(
-    label: String,
-    value: String,
-    unit: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = VoltStarTheme.BackgroundDark),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Text(
-                text = label,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 16.sp,
-                color = VoltStarTheme.TextSecondary,
-                letterSpacing = 2.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = value,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 42.sp,
-                color = color,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = unit,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 18.sp,
-                color = VoltStarTheme.TextSecondary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-// Standard metric display card
-@Composable
-fun MetricCard(
-    label: String,
-    value: String,
-    unit: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = VoltStarTheme.BackgroundDark),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = label,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                color = VoltStarTheme.TextSecondary,
-                letterSpacing = 1.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = value,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 24.sp,
-                color = color,
-                fontWeight = FontWeight.Bold
-            )
-            if (unit.isNotEmpty()) {
-                Text(
-                    text = unit,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    color = VoltStarTheme.TextSecondary,
-                    fontWeight = FontWeight.Bold
+            Column(
+                modifier = Modifier
+                    .weight(0.4f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PrimaryMetricCard(
+                    label = "SPEED",
+                    value = "%.0f".format(data.speed),
+                    unit = "km/h",
+                    color = speedColor,
+                    modifier = Modifier.weight(1f)
+                )
+
+                PrimaryMetricCard(
+                    label = "VOLTAGE",
+                    value = "%.1f".format(data.voltage),
+                    unit = "V",
+                    color = voltageColor,
+                    modifier = Modifier.weight(1f)
                 )
             }
+
+            Column(
+                modifier = Modifier
+                    .weight(0.35f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CompactMetricCard(
+                    label = "CURRENT",
+                    value = "%.1f".format(data.current),
+                    unit = "A",
+                    color = currentColor
+                )
+                CompactMetricCard(
+                    label = "POWER",
+                    value = "%.0f".format(data.power),
+                    unit = "W",
+                    color = DashboardTheme.Blue
+                )
+                CompactMetricCard(
+                    label = "RPM",
+                    value = "%.0f".format(data.rpm),
+                    unit = "",
+                    color = DashboardTheme.Blue
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(0.25f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CompactMetricCard(
+                    label = "DISTANCE",
+                    value = "%.2f".format(data.distance),
+                    unit = "km",
+                    color = DashboardTheme.Green
+                )
+                CompactMetricCard(
+                    label = "Ah USED",
+                    value = "%.2f".format(data.ah),
+                    unit = "Ah",
+                    color = DashboardTheme.Yellow
+                )
+
+                StatusControlCard(
+                    timestamp = data.timestamp,
+                    isConnected = isConnected,
+                    onStop = onStop,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        TopBar()
+    }
+}
+
+@Composable
+fun TopBar() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(DashboardTheme.Blue, RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "VS",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Text(
+                text = "VOLTSTAR",
+                color = DashboardTheme.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 2.sp
+            )
         }
     }
 }
 
-// Control buttons card
 @Composable
-fun ControlCard(
-    onStop: () -> Unit,
-    onRefresh: () -> Unit,
+fun PrimaryMetricCard(
+    label: String,
+    value: String,
+    unit: String,
+    color: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = VoltStarTheme.SurfaceDark),
-        shape = RoundedCornerShape(8.dp)
+        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(8.dp),
-            verticalArrangement = Arrangement.SpaceEvenly,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .padding(20.dp),
+            contentAlignment = Alignment.Center
         ) {
-            IconButton(
-                onClick = onStop,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(VoltStarTheme.RacingRed, CircleShape)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    Icons.Default.Stop,
-                    contentDescription = "Stop",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = label,
+                    color = DashboardTheme.TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.5.sp
                 )
-            }
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(VoltStarTheme.PinkPurpleGradient, CircleShape)
-            ) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Refresh",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = value,
+                    color = color,
+                    fontSize = 56.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = unit,
+                    color = DashboardTheme.TextSecondary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = FontFamily.Monospace
                 )
             }
         }
     }
 }
 
-// Status display card
 @Composable
-fun StatusCard(
+fun CompactMetricCard(
+    label: String,
+    value: String,
+    unit: String,
+    color: Color
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(70.dp),
+        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = label,
+                    color = DashboardTheme.TextSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.sp
+                )
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = value,
+                        color = color,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    if (unit.isNotEmpty()) {
+                        Text(
+                            text = unit,
+                            color = DashboardTheme.TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusControlCard(
     timestamp: Long,
     isConnected: Boolean,
+    onStop: () -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val formatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val timeString = remember(timestamp) { formatter.format(Date(timestamp)) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "ConnectionIndicator")
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
+        initialValue = 0.4f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "ConnectionPulse"
+        label = "pulse"
     )
 
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = VoltStarTheme.SurfaceDark),
-        shape = RoundedCornerShape(8.dp)
+        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceEvenly,
+                .padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = "TIME",
+                    color = DashboardTheme.TextSecondary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = VoltStarTheme.TextSecondary,
                     letterSpacing = 1.sp
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = timeString,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp,
                     color = Color.White,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
                 )
             }
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
+                        .size(8.dp)
                         .alpha(if (isConnected) alpha else 0.3f)
                         .background(
-                            if (isConnected) VoltStarTheme.NeonGreen else Color.Gray,
+                            if (isConnected) DashboardTheme.Green else Color.Gray,
                             CircleShape
                         )
                 )
                 Text(
-                    text = "FIREBASE",
+                    text = if (isConnected) "ONLINE" else "OFFLINE",
+                    color = if (isConnected) DashboardTheme.Green else Color.Gray,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 8.sp,
-                    color = if (isConnected) VoltStarTheme.NeonGreen else Color.Gray,
                     letterSpacing = 1.sp
                 )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .background(
+                            DashboardTheme.Yellow.copy(alpha = 0.15f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .border(
+                            1.dp,
+                            DashboardTheme.Yellow.copy(alpha = 0.3f),
+                            RoundedCornerShape(6.dp)
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = DashboardTheme.Yellow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onStop,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .background(
+                            DashboardTheme.Red.copy(alpha = 0.15f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .border(
+                            1.dp,
+                            DashboardTheme.Red.copy(alpha = 0.3f),
+                            RoundedCornerShape(6.dp)
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Stop,
+                        contentDescription = "Stop",
+                        tint = DashboardTheme.Red,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
 }
 
-// File selection screen
 @Composable
 fun FileSelectionScreen(onFileSelect: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(DashboardTheme.MainBlack),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(100.dp)
-                    .background(
-                        brush = VoltStarTheme.PinkPurpleGradient,
-                        shape = RoundedCornerShape(20.dp)
-                    ),
+                    .size(80.dp)
+                    .background(DashboardTheme.Blue, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "VS",
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 32.sp,
                     color = Color.White,
-                    letterSpacing = 2.sp
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
                 )
             }
             Text(
                 text = "VOLTSTAR",
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
                 color = Color.White,
-                letterSpacing = 3.sp
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 4.sp
             )
             Button(
                 onClick = onFileSelect,
                 modifier = Modifier
-                    .width(200.dp)
+                    .width(240.dp)
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE91E63)
+                    containerColor = DashboardTheme.Blue
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Icon(
                     Icons.Default.FolderOpen,
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
                     tint = Color.White
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "CHOOSE CA LOG",
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
+                    text = "LOAD CA FILE",
+                    color = Color.White,
                     fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
                     letterSpacing = 1.sp
                 )
             }
@@ -933,13 +949,12 @@ fun FileSelectionScreen(onFileSelect: () -> Unit) {
     }
 }
 
-// Error screen
 @Composable
 fun ErrorScreen(message: String, onRetry: () -> Unit, onFileSelect: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(DashboardTheme.MainBlack),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -950,24 +965,23 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onFileSelect: () -> Unit) 
             Icon(
                 Icons.Default.Warning,
                 contentDescription = null,
-                tint = VoltStarTheme.RacingRed,
-                modifier = Modifier.size(80.dp)
+                tint = DashboardTheme.Red,
+                modifier = Modifier.size(64.dp)
             )
             Text(
                 text = "ERROR",
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
+                color = DashboardTheme.Red,
                 fontSize = 24.sp,
-                color = VoltStarTheme.RacingRed,
-                letterSpacing = 3.sp
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 2.sp
             )
             Text(
                 text = message,
-                fontFamily = FontFamily.Monospace,
+                color = DashboardTheme.TextSecondary,
                 fontSize = 14.sp,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.Center
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -976,24 +990,37 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onFileSelect: () -> Unit) 
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = VoltStarTheme.RacingOrange
+                        containerColor = DashboardTheme.Yellow
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = Color.Black
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("RETRY", letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "RETRY",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
                 Button(
                     onClick = onFileSelect,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE91E63)
+                        containerColor = DashboardTheme.Blue
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.FolderOpen, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("NEW FILE", letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "NEW FILE",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
             }
         }
