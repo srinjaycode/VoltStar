@@ -4,3 +4,9 @@ firebase-debug.log
 node_modules/
 .vscode/
 dist/
+package-lock.json
+
+.env
+.env.local
+.DS_Store
+*.log
