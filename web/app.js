@@ -1,4 +1,4 @@
-// voltstar neural ai - lets gooooo  checking for git update
+// voltstar neural ai - FIXED VERSION for voltstar01
 console.log('🚀 VoltStar Neural AI - Initializing with TensorFlow.js...');
 
 // firebase config
@@ -44,27 +44,27 @@ let chatHistory = [];
 let maxDataPoints = 100;
 let isConnected = false;
 
-// vehicle physical constants (the true physics baby)
+// vehicle physical constants
 const VEHICLE_CONSTANTS = {
-  batteryCapacity: 26, // Ah
-  batteryVoltage: 48, // V
-  motorPower: 1000, // W
-  wheelDiameter: 0.66, // m
-  vehicleMass: 120, // kg
+  batteryCapacity: 26,
+  batteryVoltage: 48,
+  motorPower: 1000,
+  wheelDiameter: 0.66,
+  vehicleMass: 120,
   dragCoefficient: 0.6,
-  frontalArea: 0.5, // m²
-  airDensity: 1.225, // kg/m³
+  frontalArea: 0.5,
+  airDensity: 1.225,
   rollingResistance: 0.008,
   maxRPM: 500,
-  maxTorque: 50, // Nm
-  maxPower: 1000, // W
-  maxCurrent: 30, // A
-  maxVoltage: 60, // V
-  maxSpeed: 50, // km/h
-  internalResistanceRange: [0.05, 0.5], // Ω
+  maxTorque: 50,
+  maxPower: 1000,
+  maxCurrent: 30,
+  maxVoltage: 60,
+  maxSpeed: 50,
+  internalResistanceRange: [0.05, 0.5],
   efficiencyRange: [0.7, 0.95],
-  maxAcceleration: 5, // m/s²
-  maxJerk: 10 // m/s³
+  maxAcceleration: 5,
+  maxJerk: 10
 };
 
 // neural network stuff
@@ -105,7 +105,6 @@ async function initNeuralNetwork() {
   addTrainingLog('inputs: speed, voltage, current, rpm, distance, previous_power');
   addTrainingLog('outputs: optimal_power, optimal_rpm, optimal_torque, efficiency, energy_per_km');
   
-  // auto train every 30 seconds if we got enough data
   autoTrainInterval = setInterval(() => {
     if (telemetryData.speed.length >= 20 && Date.now() - lastTrainingTime > 30000) {
       trainNeuralNetwork();
@@ -113,7 +112,7 @@ async function initNeuralNetwork() {
   }, 30000);
 }
 
-// calculate true physical params
+// calculate true physical params - FIXED ENERGY CALCULATION
 function calculateTruePhysicalParameters(dataPoint, index) {
   const { speed, voltage, current, rpm, distance } = dataPoint;
   
@@ -137,11 +136,18 @@ function calculateTruePhysicalParameters(dataPoint, index) {
     jerk = (acceleration - prevAccel) / dt;
   }
   
+  // FIXED: Better energy accumulation - add energy consumed in Wh
   const prevEnergy = index > 0 ? (telemetryData.energy[index - 1] || 0) : 0;
+  // Assuming 1 second intervals: (Power in W) / 3600 = Wh per second
   const energy = prevEnergy + (power / 3600);
   
-  const prevAh = index > 0 ? (telemetryData.ampHours[index - 1] || 0) : 0;
-  const ampHours = prevAh + (current / 3600);
+  let ampHours;
+  if (dataPoint.ah !== undefined && dataPoint.ah !== null) {
+    ampHours = parseFloat(dataPoint.ah);
+  } else {
+    const prevAh = index > 0 ? (telemetryData.ampHours[index - 1] || 0) : 0;
+    ampHours = prevAh + (current / 3600);
+  }
   
   const totalAh = VEHICLE_CONSTANTS.batteryCapacity;
   const soc = Math.max(0, Math.min(100, 100 - (ampHours / totalAh) * 100));
@@ -208,7 +214,7 @@ function calculatePhysicalLimits(currentState) {
   };
 }
 
-// train the neural net baby
+// train the neural net
 async function trainNeuralNetwork() {
   if (telemetryData.speed.length < 20) {
     addTrainingLog('need at least 20 data points to train', 'warning');
@@ -242,7 +248,7 @@ async function trainNeuralNetwork() {
       prevPower / VEHICLE_CONSTANTS.maxPower
     ]);
     
-    const energyPerKm = telemetryData.distance[i] > 0 ? 
+    const energyPerKm = telemetryData.distance[i] > 0.01 ? 
       ((telemetryData.energy[i] / telemetryData.distance[i]) * 1000) : 0;
     
     outputs.push([
@@ -339,7 +345,7 @@ async function makePrediction(speed, voltage, current, rpm, distance, prevPower)
   return { prediction: denormalizedPrediction, validation };
 }
 
-// generate ai suggestions (more expressive now)
+// generate ai suggestions
 async function generateNeuralSuggestions() {
   if (!model || telemetryData.speed.length < 5) {
     return 'hey! im still warming up here... need at least 5 data points to start analyzing your ride 🔥';
@@ -420,7 +426,7 @@ async function generateNeuralSuggestions() {
   return suggestions;
 }
 
-// init chart with multi-axis support
+// init chart
 let telemetryChart;
 
 function initChart() {
@@ -471,45 +477,78 @@ function initChart() {
   });
 }
 
-// update chart with multi-axis support
+// FIXED: Updated chart function with corrected graph types
 function updateChart() {
   const chartType = document.getElementById('chartType').value;
   
   let datasets = [];
   let labels = [];
   
-  // reset scales
-  telemetryChart.options.scales.x.type = 'linear';
+  telemetryChart.options.scales.x.type = 'category';
   telemetryChart.options.scales.y.type = 'linear';
   telemetryChart.options.scales.y1.display = false;
   
   switch(chartType) {
     case 'power-rpm':
-      datasets = [{
-        label: 'Power vs RPM',
-        data: telemetryData.rpm.map((rpm, i) => ({ x: rpm, y: telemetryData.power[i] })),
-        borderColor: '#ffaa00',
-        backgroundColor: 'rgba(255, 170, 0, 0.1)',
-        borderWidth: 2,
-        pointRadius: 2,
-        showLine: true
-      }];
-      telemetryChart.options.scales.x.title = { display: true, text: 'RPM', color: '#94a3b8' };
+      // FIXED: Show both Power and RPM over time with dual y-axes
+      labels = telemetryData.timestamps;
+      telemetryChart.options.scales.y1.display = true;
       telemetryChart.options.scales.y.title = { display: true, text: 'Power (W)', color: '#94a3b8' };
+      telemetryChart.options.scales.y1.title = { display: true, text: 'RPM', color: '#94a3b8' };
+      
+      datasets = [
+        {
+          label: 'Power (W)',
+          data: telemetryData.power,
+          borderColor: '#ffaa00',
+          backgroundColor: 'rgba(255, 170, 0, 0.1)',
+          borderWidth: 2,
+          pointRadius: 1,
+          tension: 0.4,
+          yAxisID: 'y'
+        },
+        {
+          label: 'RPM',
+          data: telemetryData.rpm,
+          borderColor: '#00d9ff',
+          backgroundColor: 'rgba(0, 217, 255, 0.1)',
+          borderWidth: 2,
+          pointRadius: 1,
+          tension: 0.4,
+          yAxisID: 'y1'
+        }
+      ];
       break;
       
     case 'torque-rpm':
-      datasets = [{
-        label: 'Torque vs RPM',
-        data: telemetryData.rpm.map((rpm, i) => ({ x: rpm, y: telemetryData.torque[i] })),
-        borderColor: '#ff006e',
-        backgroundColor: 'rgba(255, 0, 110, 0.1)',
-        borderWidth: 2,
-        pointRadius: 2,
-        showLine: true
-      }];
-      telemetryChart.options.scales.x.title = { display: true, text: 'RPM', color: '#94a3b8' };
+      // FIXED: Show both Torque and RPM over time with dual y-axes
+      labels = telemetryData.timestamps;
+      telemetryChart.options.scales.y1.display = true;
       telemetryChart.options.scales.y.title = { display: true, text: 'Torque (Nm)', color: '#94a3b8' };
+      telemetryChart.options.scales.y1.title = { display: true, text: 'RPM', color: '#94a3b8' };
+      
+      datasets = [
+        {
+          label: 'Torque (Nm)',
+          data: telemetryData.torque,
+          borderColor: '#ff006e',
+          backgroundColor: 'rgba(255, 0, 110, 0.1)',
+          borderWidth: 2,
+          pointRadius: 1,
+          tension: 0.4,
+          yAxisID: 'y'
+        },
+        {
+          label: 'RPM',
+          data: telemetryData.rpm,
+          borderColor: '#00d9ff',
+          backgroundColor: 'rgba(0, 217, 255, 0.1)',
+          borderWidth: 2,
+          pointRadius: 1,
+          tension: 0.4,
+          yAxisID: 'y1'
+        }
+      ];
       break;
       
     case 'acceleration':
@@ -538,6 +577,7 @@ function updateChart() {
       break;
       
     case 'energy-distance':
+      telemetryChart.options.scales.x.type = 'linear';
       datasets = [{
         label: 'Energy vs Distance',
         data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.energy[i] })),
@@ -552,6 +592,7 @@ function updateChart() {
       break;
       
     case 'soc-distance':
+      telemetryChart.options.scales.x.type = 'linear';
       datasets = [{
         label: 'SOC vs Distance',
         data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.soc[i] })),
@@ -566,47 +607,51 @@ function updateChart() {
       break;
       
     case 'voltage-current':
+      // FIXED: Better V-I curve with filtering and trendline
+      telemetryChart.options.scales.x.type = 'linear';
+      
+      // Filter out low current readings and group similar points
+      const validPoints = telemetryData.current
+        .map((c, i) => ({ x: c, y: telemetryData.voltage[i] }))
+        .filter(p => p.x > 1.0); // Only include points with current > 1A
+      
       datasets = [{
         label: 'Voltage vs Current',
-        data: telemetryData.current.map((c, i) => ({ x: c, y: telemetryData.voltage[i] })),
+        data: validPoints,
         borderColor: '#ff3366',
-        backgroundColor: 'rgba(255, 51, 102, 0.1)',
-        borderWidth: 2,
-        pointRadius: 3,
+        backgroundColor: 'rgba(255, 51, 102, 0.3)',
+        borderWidth: 0,
+        pointRadius: 4,
+        pointHoverRadius: 6,
         showLine: false
       }];
       
-      if (telemetryData.current.length > 5) {
-        const validPoints = telemetryData.current
-          .map((c, i) => ({ x: c, y: telemetryData.voltage[i] }))
-          .filter(p => p.x > 0.5);
+      // Add trendline if we have enough valid points
+      if (validPoints.length > 5) {
+        const sumX = validPoints.reduce((a, p) => a + p.x, 0);
+        const sumY = validPoints.reduce((a, p) => a + p.y, 0);
+        const sumXY = validPoints.reduce((a, p) => a + p.x * p.y, 0);
+        const sumX2 = validPoints.reduce((a, p) => a + p.x * p.x, 0);
+        const n = validPoints.length;
         
-        if (validPoints.length > 3) {
-          const sumX = validPoints.reduce((a, p) => a + p.x, 0);
-          const sumY = validPoints.reduce((a, p) => a + p.y, 0);
-          const sumXY = validPoints.reduce((a, p) => a + p.x * p.y, 0);
-          const sumX2 = validPoints.reduce((a, p) => a + p.x * p.x, 0);
-          const n = validPoints.length;
-          
-          const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-          const intercept = (sumY - slope * sumX) / n;
-          
-          const minX = Math.min(...validPoints.map(p => p.x));
-          const maxX = Math.max(...validPoints.map(p => p.x));
-          
-          datasets.push({
-            label: `trend (R ≈ ${Math.abs(slope).toFixed(3)}Ω)`,
-            data: [
-              { x: minX, y: slope * minX + intercept },
-              { x: maxX, y: slope * maxX + intercept }
-            ],
-            borderColor: '#ffaa00',
-            borderWidth: 2,
-            borderDash: [5, 5],
-            pointRadius: 0,
-            showLine: true
-          });
-        }
+        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        const intercept = (sumY - slope * sumX) / n;
+        
+        const minX = Math.min(...validPoints.map(p => p.x));
+        const maxX = Math.max(...validPoints.map(p => p.x));
+        
+        datasets.push({
+          label: `Internal R ≈ ${Math.abs(slope).toFixed(3)}Ω`,
+          data: [
+            { x: minX, y: slope * minX + intercept },
+            { x: maxX, y: slope * maxX + intercept }
+          ],
+          borderColor: '#ffaa00',
+          borderWidth: 3,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          showLine: true
+        });
       }
       
       telemetryChart.options.scales.x.title = { display: true, text: 'Current (A)', color: '#94a3b8' };
@@ -614,6 +659,7 @@ function updateChart() {
       break;
       
     case 'speed-distance':
+      telemetryChart.options.scales.x.type = 'linear';
       datasets = [{
         label: 'Speed vs Distance',
         data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.speed[i] })),
@@ -628,18 +674,14 @@ function updateChart() {
       telemetryChart.options.scales.y.title = { display: true, text: 'Speed (km/h)', color: '#94a3b8' };
       break;
       
-    default: // telemetry - THIS IS THE ONE THATS BROKEN
+    default: // telemetry
       telemetryChart.options.scales.x.type = 'category';
       labels = telemetryData.timestamps;
       
-      // yo get the checkbox states properly
       const voltageChecked = document.getElementById('chartVoltage')?.checked || false;
       const currentChecked = document.getElementById('chartCurrent')?.checked || false;
       const powerChecked = document.getElementById('chartPower')?.checked || false;
       
-      console.log('checkbox states:', voltageChecked, currentChecked, powerChecked); // debug this shit
-      
-      // use dual y-axis if power is selected with other metrics
       const useDualAxis = powerChecked && (voltageChecked || currentChecked);
       
       if (useDualAxis) {
@@ -706,9 +748,6 @@ function setupFirebaseListeners() {
     const readings = snapshot.val();
     const readingKeys = Object.keys(readings).sort();
     
-    console.log('📊 processing', readingKeys.length, 'data points');
-    
-    // clear old data
     for (const key in telemetryData) {
       telemetryData[key] = [];
     }
@@ -721,7 +760,8 @@ function setupFirebaseListeners() {
         voltage: parseFloat(reading.voltage) || 0,
         current: parseFloat(reading.current) || 0,
         rpm: parseInt(reading.rpm) || 0,
-        distance: parseFloat(reading.distance) || 0
+        distance: parseFloat(reading.distance) || 0,
+        ah: parseFloat(reading.ah) || null
       };
       
       const derived = calculateTruePhysicalParameters(dataPoint, index);
@@ -749,7 +789,6 @@ function setupFirebaseListeners() {
       telemetryData.ampHours.push(derived.ampHours);
     });
     
-    // keep only latest maxDataPoints
     if (telemetryData.timestamps.length > maxDataPoints) {
       const excess = telemetryData.timestamps.length - maxDataPoints;
       for (const key in telemetryData) {
@@ -757,9 +796,16 @@ function setupFirebaseListeners() {
       }
     }
     
-    // update current data
     const lastIdx = telemetryData.speed.length - 1;
     if (lastIdx >= 0) {
+      // FIXED: Better energyPerKm calculation with minimum distance check
+      let energyPerKm = 0;
+      if (telemetryData.distance[lastIdx] > 0.01) {
+        energyPerKm = (telemetryData.energy[lastIdx] / telemetryData.distance[lastIdx]) * 1000;
+        // Cap at reasonable maximum
+        energyPerKm = Math.min(energyPerKm, 200);
+      }
+      
       currentData = {
         speed: telemetryData.speed[lastIdx],
         voltage: telemetryData.voltage[lastIdx],
@@ -771,8 +817,7 @@ function setupFirebaseListeners() {
         acceleration: telemetryData.acceleration[lastIdx],
         jerk: telemetryData.jerk[lastIdx],
         soc: telemetryData.soc[lastIdx],
-        energyPerKm: telemetryData.distance[lastIdx] > 0 ? 
-          (telemetryData.energy[lastIdx] / telemetryData.distance[lastIdx]) * 1000 : 0
+        energyPerKm: energyPerKm
       };
     }
     
@@ -781,8 +826,6 @@ function setupFirebaseListeners() {
     updateMetricsDisplay();
     updateChart();
     updateDiagnostics();
-    
-    console.log('✅ loaded', telemetryData.timestamps.length, 'points');
     
   }, (error) => {
     console.error('❌ firebase error:', error);
@@ -810,13 +853,9 @@ function updateTrainingStatus(status) {
 }
 
 function updateMetricsDisplay() {
-  // Update speedometer
   updateSpeedometer(currentData.speed);
-  
-  // Update battery gauge
   updateBatteryGauge(currentData.soc, telemetryData.ampHours[telemetryData.ampHours.length - 1] || 0);
   
-  // Update other metrics
   document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
   document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
   document.getElementById('powerValue').textContent = currentData.power.toFixed(0);
@@ -827,31 +866,34 @@ function updateMetricsDisplay() {
   const accelElem = document.getElementById('accelValue');
   if (accelElem) accelElem.textContent = currentData.acceleration.toFixed(2);
   
-  // Update colors
   updateMetricColors();
 }
 
-// ADD THESE FUNCTIONS - Speedometer with graduations
+function getValueColor(value, thresholds) {
+  if (value <= thresholds.excellent) return { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
+  if (value <= thresholds.good) return { color: 'var(--color-good)', glow: 'var(--glow-green)' };
+  if (value <= thresholds.moderate) return { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
+  if (value <= thresholds.warning) return { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
+  return { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
+}
+
+// FIXED: Speed display now updates properly
 function updateSpeedometer(speed) {
-  const maxSpeed = 60; // 0-60 km/h range
+  const maxSpeed = 60;
   const percentage = Math.min(speed / maxSpeed, 1);
   
-  // Calculate angle (-135deg to +135deg = 270deg total)
   const angle = -135 + (percentage * 270);
   
-  // Update needle
   const needle = document.getElementById('speedometer-needle');
   if (needle) {
     needle.style.transform = `rotate(${angle}deg)`;
   }
   
-  // Update arc
   const arc = document.getElementById('speedometer-arc');
   if (arc) {
     const offset = 424 * (1 - percentage);
     arc.style.strokeDashoffset = offset;
     
-    // Dynamic color
     let color;
     if (speed < 20) color = '#00ff00';
     else if (speed < 35) color = '#88ff00';
@@ -861,7 +903,6 @@ function updateSpeedometer(speed) {
     arc.style.stroke = color;
   }
   
-  // Update dot color
   const dot = document.getElementById('speedometer-dot');
   if (dot) {
     let color;
@@ -874,9 +915,10 @@ function updateSpeedometer(speed) {
     dot.style.filter = `drop-shadow(0 0 8px ${color})`;
   }
   
-  // Update text color
+  // FIXED: Actually update the speed text value
   const speedValue = document.getElementById('speedValue');
   if (speedValue) {
+    speedValue.textContent = Math.round(speed);
     let color, glow;
     if (speed < 20) {
       color = '#00ff00';
@@ -897,7 +939,7 @@ function updateSpeedometer(speed) {
   }
 }
 
-// Battery with proportional fill
+// FIXED: Battery display updates properly with black text for contrast
 function updateBatteryGauge(soc, ah) {
   const batteryWidth = 130;
   const fillWidth = (soc / 100) * batteryWidth;
@@ -906,7 +948,6 @@ function updateBatteryGauge(soc, ah) {
   if (fill) {
     fill.setAttribute('width', fillWidth);
     
-    // Dynamic color
     let color;
     if (soc >= 80) color = '#00ff00';
     else if (soc >= 60) color = '#88ff00';
@@ -918,14 +959,17 @@ function updateBatteryGauge(soc, ah) {
     fill.style.filter = `drop-shadow(0 0 6px ${color})`;
   }
   
+  // FIXED: Always use black text for proper contrast
   const batteryText = document.getElementById('battery-text');
   if (batteryText) {
     batteryText.textContent = `${Math.round(soc)}%`;
-    batteryText.style.fill = soc >= 60 ? '#ffffff' : '#000000';
+    batteryText.style.fill = '#000000';
   }
   
+  // FIXED: Update SOC value properly
   const socValue = document.getElementById('socValue');
   if (socValue) {
+    socValue.textContent = Math.round(soc);
     let color, glow;
     if (soc >= 80) {
       color = '#00ff00';
@@ -954,16 +998,15 @@ function updateBatteryGauge(soc, ah) {
   }
 }
 
-// Update metric colors
 function updateMetricColors() {
-  // Voltage
   const voltagePercent = (currentData.voltage / VEHICLE_CONSTANTS.maxVoltage) * 100;
+  const voltageThresholds = { excellent: 100, good: 75, moderate: 60, warning: 50 };
   let voltageColor;
-  if (voltagePercent >= 90) voltageColor = { color: '#00ff00', glow: '0 0 15px rgba(0, 255, 0, 0.8)' };
-  else if (voltagePercent >= 75) voltageColor = { color: '#88ff00', glow: '0 0 15px rgba(136, 255, 0, 0.8)' };
-  else if (voltagePercent >= 60) voltageColor = { color: '#ffff00', glow: '0 0 15px rgba(255, 255, 0, 0.8)' };
-  else if (voltagePercent >= 50) voltageColor = { color: '#ffaa00', glow: '0 0 15px rgba(255, 170, 0, 0.8)' };
-  else voltageColor = { color: '#ff0000', glow: '0 0 15px rgba(255, 0, 0, 0.8)' };
+  if (voltagePercent >= 90) voltageColor = getValueColor(100, voltageThresholds);
+  else if (voltagePercent >= 75) voltageColor = getValueColor(80, voltageThresholds);
+  else if (voltagePercent >= 60) voltageColor = getValueColor(65, voltageThresholds);
+  else if (voltagePercent >= 50) voltageColor = getValueColor(55, voltageThresholds);
+  else voltageColor = getValueColor(40, voltageThresholds);
   
   const voltageEl = document.getElementById('voltageValue');
   if (voltageEl) {
@@ -971,13 +1014,9 @@ function updateMetricColors() {
     voltageEl.style.textShadow = voltageColor.glow;
   }
   
-  // Similar for other metrics...
   const currentPercent = Math.abs(currentData.current / VEHICLE_CONSTANTS.maxCurrent) * 100;
-  let currentColor;
-  if (currentPercent < 40) currentColor = { color: '#00ff00', glow: '0 0 15px rgba(0, 255, 0, 0.8)' };
-  else if (currentPercent < 60) currentColor = { color: '#88ff00', glow: '0 0 15px rgba(136, 255, 0, 0.8)' };
-  else if (currentPercent < 80) currentColor = { color: '#ffaa00', glow: '0 0 15px rgba(255, 170, 0, 0.8)' };
-  else currentColor = { color: '#ff0000', glow: '0 0 15px rgba(255, 0, 0, 0.8)' };
+  const currentThresholds = { excellent: 30, good: 50, moderate: 70, warning: 90 };
+  const currentColor = getValueColor(currentPercent, currentThresholds);
   
   const currentEl = document.getElementById('currentValue');
   if (currentEl) {
@@ -985,7 +1024,53 @@ function updateMetricColors() {
     currentEl.style.textShadow = currentColor.glow;
   }
   
-  // Power, RPM, Torque, Energy, Accel - similar pattern
+  const powerPercent = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
+  const powerThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const powerColor = getValueColor(powerPercent, powerThresholds);
+  
+  const powerEl = document.getElementById('powerValue');
+  if (powerEl) {
+    powerEl.style.color = powerColor.color;
+    powerEl.style.textShadow = powerColor.glow;
+  }
+  
+  const rpmPercent = (currentData.rpm / VEHICLE_CONSTANTS.maxRPM) * 100;
+  const rpmThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const rpmColor = getValueColor(rpmPercent, rpmThresholds);
+  
+  const rpmEl = document.getElementById('rpmValue');
+  if (rpmEl) {
+    rpmEl.style.color = rpmColor.color;
+    rpmEl.style.textShadow = rpmColor.glow;
+  }
+  
+  const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
+  const torqueThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
+  const torqueColor = getValueColor(torquePercent, torqueThresholds);
+  
+  const torqueEl = document.getElementById('torqueValue');
+  if (torqueEl) {
+    torqueEl.style.color = torqueColor.color;
+    torqueEl.style.textShadow = torqueColor.glow;
+  }
+  
+  const energyThresholds = { excellent: 15, good: 25, moderate: 35, warning: 50 };
+  const energyColor = getValueColor(currentData.energyPerKm, energyThresholds);
+  
+  const energyEl = document.getElementById('energyPerKmValue');
+  if (energyEl) {
+    energyEl.style.color = energyColor.color;
+    energyEl.style.textShadow = energyColor.glow;
+  }
+  
+  const accelThresholds = { excellent: 1, good: 2, moderate: 3, warning: 4 };
+  const accelColor = getValueColor(Math.abs(currentData.acceleration), accelThresholds);
+  
+  const accelEl = document.getElementById('accelValue');
+  if (accelEl) {
+    accelEl.style.color = accelColor.color;
+    accelEl.style.textShadow = accelColor.glow;
+  }
 }
 
 function updateDiagnostics() {
@@ -1001,10 +1086,8 @@ function updateDiagnostics() {
     rpm: currentData.rpm
   });
   
-  // power vs rpm analysis
   if (currentData.rpm > 0 && currentData.power > 0) {
     const powerUtilization = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
-    const optimalPowerDiff = currentData.power - physicalLimits.optimalPower;
     let status, message, suggestion;
     
     if (powerUtilization < 40) {
@@ -1038,7 +1121,6 @@ function updateDiagnostics() {
     `;
   }
   
-  // torque vs rpm
   if (currentData.torque > 0 && currentData.rpm > 0) {
     const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
     let status = torquePercent < 60 ? 'good' : torquePercent < 85 ? 'moderate' : 'critical';
@@ -1056,7 +1138,6 @@ function updateDiagnostics() {
     `;
   }
   
-  // acceleration & jerk
   if (Math.abs(currentData.acceleration) > 0.05) {
     const accelPercent = (Math.abs(currentData.acceleration) / VEHICLE_CONSTANTS.maxAcceleration) * 100;
     let status = accelPercent < 50 ? 'good' : accelPercent < 80 ? 'moderate' : 'critical';
@@ -1074,7 +1155,6 @@ function updateDiagnostics() {
     `;
   }
   
-  // energy per distance
   if (currentData.distance > 0.1 && currentData.energyPerKm > 0) {
     let status = 'good';
     if (currentData.energyPerKm > 30) status = 'moderate';
@@ -1095,7 +1175,6 @@ function updateDiagnostics() {
     `;
   }
   
-  // aero & rolling resistance
   if (currentData.speed > 5) {
     const dragPercent = (physicalLimits.dragPower / physicalLimits.resistancePower) * 100;
     let status = dragPercent < 70 ? 'good' : dragPercent < 85 ? 'moderate' : 'critical';
@@ -1113,7 +1192,6 @@ function updateDiagnostics() {
     `;
   }
   
-  // soc analysis
   const remainingCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
   let socStatus = currentData.soc > 80 ? 'excellent' : currentData.soc > 50 ? 'good' : currentData.soc > 20 ? 'moderate' : 'critical';
   
@@ -1129,7 +1207,6 @@ function updateDiagnostics() {
     </div>
   `;
   
-  // voltage sag & internal resistance
   if (currentData.current > 0.5) {
     const expectedVoltage = VEHICLE_CONSTANTS.batteryVoltage;
     const voltageSag = expectedVoltage - currentData.voltage;
@@ -1164,7 +1241,6 @@ function addTrainingLog(message, type = 'info') {
   logContainer.appendChild(logEntry);
   logContainer.scrollTop = logContainer.scrollHeight;
   
-  // keep only last 50 entries
   while (logContainer.children.length > 50) {
     logContainer.removeChild(logContainer.firstChild);
   }
@@ -1189,123 +1265,21 @@ function addAIMessage(content, type = 'ai') {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// ENHANCED KEYWORD RECOGNITION SYSTEM - ADD THIS BEFORE handleUserMessage()
-
 const KEYWORD_CATEGORIES = {
-  training: [
-    'train', 'training', 'learn', 'learning', 'teach', 'teaching', 'practice', 'practicing',
-    'improve', 'improving', 'optimize', 'optimizing', 'enhance', 'enhancing', 'upgrade',
-    'upgrading', 'educate', 'educating', 'study', 'studying', 'develop', 'developing',
-    'refine', 'refining', 'tune', 'tuning', 'calibrate', 'calibrating', 'adapt', 'adapting',
-    'evolve', 'evolving', 'grow', 'growing', 'advance', 'advancing', 'progress', 'progressing',
-    'model', 'neural', 'network', 'ai', 'machine learning', 'ml', 'deep learning'
-  ],
-  
-  suggestions: [
-    'suggest', 'suggestion', 'suggestions', 'recommend', 'recommendation', 'recommendations',
-    'advise', 'advice', 'tip', 'tips', 'hint', 'hints', 'help', 'helping', 'guide', 'guidance',
-    'improve', 'improvement', 'improvements', 'optimize', 'optimization', 'better', 'best',
-    'ideal', 'perfect', 'enhance', 'enhancement', 'boost', 'boosting', 'upgrade', 'upgrading',
-    'maximize', 'maximizing', 'increase', 'increasing', 'fix', 'fixing', 'solve', 'solving',
-    'solution', 'solutions', 'idea', 'ideas', 'way', 'ways', 'method', 'methods', 'approach',
-    'what should', 'how can', 'how do', 'can you', 'could you', 'would you', 'please',
-    'need help', 'help me', 'show me', 'tell me', 'explain', 'clarify'
-  ],
-  
-  power: [
-    'power', 'watt', 'watts', 'w', 'torque', 'nm', 'newton', 'motor', 'engine',
-    'rpm', 'rev', 'revs', 'revolution', 'revolutions', 'rotation', 'rotations', 'spin', 'spinning',
-    'acceleration', 'accelerate', 'accelerating', 'speed up', 'speeding up', 'faster', 'fast',
-    'quick', 'quicker', 'rapid', 'velocity', 'throttle', 'gas', 'pedal', 'performance',
-    'horsepower', 'hp', 'thrust', 'force', 'push', 'pushing', 'pull', 'pulling',
-    'output', 'capacity', 'capability', 'strength', 'strong', 'powerful', 'weak', 'weakness',
-    'grunt', 'oomph', 'juice', 'muscle', 'kick', 'punch', 'boost', 'surge'
-  ],
-  
-  efficiency: [
-    'efficiency', 'efficient', 'inefficient', 'economy', 'economical', 'energy', 'energies',
-    'consumption', 'consume', 'consuming', 'usage', 'use', 'using', 'burn', 'burning',
-    'drain', 'draining', 'waste', 'wasting', 'save', 'saving', 'savings', 'conservation',
-    'conserve', 'conserving', 'mileage', 'mpg', 'range', 'distance', 'wh/km', 'wh', 'kwh',
-    'per km', 'per kilometer', 'per mile', 'fuel', 'gas', 'electric', 'electricity',
-    'discharge', 'discharging', 'charge', 'charging', 'drain rate', 'consumption rate',
-    'eco', 'eco mode', 'economical', 'frugal', 'thrifty', 'lean', 'green', 'sustainable'
-  ],
-  
-  battery: [
-    'battery', 'batteries', 'cell', 'cells', 'charge', 'charging', 'charged', 'charger',
-    'soc', 'state of charge', 'capacity', 'ah', 'amp hour', 'amp hours', 'ampere',
-    'voltage', 'volt', 'volts', 'v', 'power', 'juice', 'energy', 'stored', 'remaining',
-    'left', 'reserve', 'reserves', 'level', 'percentage', 'percent', '%', 'low', 'high',
-    'full', 'empty', 'dead', 'dying', 'life', 'lifespan', 'health', 'condition',
-    'degradation', 'wear', 'age', 'aging', 'cycle', 'cycles', 'discharge', 'discharging',
-    'pack', 'module', 'lithium', 'li-ion', 'lifepo4', 'lead acid', 'chemistry',
-    'internal resistance', 'sag', 'drop', 'cutoff', 'protection', 'bms'
-  ],
-  
-  range: [
-    'range', 'distance', 'far', 'how far', 'how long', 'miles', 'kilometers', 'km',
-    'travel', 'traveling', 'trip', 'journey', 'go', 'going', 'reach', 'reaching',
-    'mileage', 'endurance', 'stamina', 'coverage', 'span', 'extent', 'limit', 'limitation',
-    'run out', 'running out', 'last', 'lasting', 'duration', 'time', 'remaining',
-    'left', 'available', 'reserve', 'estimate', 'estimated', 'prediction', 'predicted',
-    'forecast', 'expected', 'potential', 'maximum', 'max', 'minimum', 'min'
-  ],
-  
-  status: [
-    'status', 'current', 'now', 'present', 'currently', 'right now', 'at the moment',
-    'stats', 'statistics', 'data', 'info', 'information', 'details', 'numbers', 'figures',
-    'readings', 'values', 'metrics', 'parameters', 'measurements', 'telemetry',
-    'what', 'whats', "what's", 'how', 'hows', "how's", 'where', 'wheres', "where's",
-    'show', 'display', 'tell', 'give', 'provide', 'report', 'update', 'overview',
-    'summary', 'snapshot', 'state', 'situation', 'condition', 'health', 'check'
-  ],
-  
-  diagnostics: [
-    'diagnostic', 'diagnostics', 'check', 'checking', 'test', 'testing', 'scan', 'scanning',
-    'problem', 'problems', 'issue', 'issues', 'error', 'errors', 'fault', 'faults',
-    'wrong', 'bad', 'broken', 'failure', 'failing', 'malfunction', 'malfunctioning',
-    'trouble', 'troubleshoot', 'troubleshooting', 'debug', 'debugging', 'fix', 'fixing',
-    'repair', 'repairing', 'health', 'healthy', 'unhealthy', 'sick', 'damage', 'damaged',
-    'wear', 'tear', 'inspection', 'inspect', 'inspecting', 'examine', 'examining',
-    'analysis', 'analyze', 'analyzing', 'evaluate', 'evaluating', 'assessment', 'assess',
-    'warning', 'warnings', 'alert', 'alerts', 'critical', 'danger', 'dangerous', 'risk'
-  ],
-  
-  prediction: [
-    'predict', 'prediction', 'predictions', 'forecast', 'forecasting', 'expect', 'expected',
-    'expecting', 'anticipate', 'anticipating', 'future', 'upcoming', 'next', 'later',
-    'will', 'would', 'should', 'could', 'might', 'may', 'probably', 'likely', 'unlikely',
-    'estimate', 'estimated', 'estimating', 'guess', 'guessing', 'projection', 'projecting',
-    'outlook', 'prospect', 'prognosis', 'trend', 'trending', 'pattern', 'patterns',
-    'compare', 'comparison', 'comparing', 'difference', 'differences', 'versus', 'vs',
-    'better', 'worse', 'best', 'worst', 'optimal', 'ideal', 'target', 'goal'
-  ],
-  
-  speed: [
-    'speed', 'speeding', 'velocity', 'fast', 'faster', 'fastest', 'slow', 'slower', 'slowest',
-    'quick', 'quicker', 'quickest', 'rapid', 'mph', 'kph', 'km/h', 'kmh', 'kilometers per hour',
-    'miles per hour', 'pace', 'rate', 'tempo', 'accelerate', 'acceleration', 'decelerate',
-    'deceleration', 'brake', 'braking', 'cruise', 'cruising', 'top speed', 'max speed',
-    'minimum speed', 'average speed', 'current speed', 'moving', 'motion', 'travel'
-  ],
-  
-  temperature: [
-    'temp', 'temperature', 'temperatures', 'hot', 'cold', 'warm', 'cool', 'heat', 'heating',
-    'overheat', 'overheating', 'thermal', 'celsius', 'fahrenheit', 'degrees', 'deg',
-    'c', 'f', 'cooling', 'cooler', 'hotter', 'warmer', 'burning', 'freeze', 'freezing'
-  ],
-  
-  summary: [
-    'summary', 'summarize', 'summarise', 'overview', 'brief', 'briefing', 'recap', 'recaps',
-    'rundown', 'roundup', 'digest', 'synopsis', 'abstract', 'outline', 'highlight', 'highlights',
-    'key points', 'main points', 'essentials', 'basics', 'fundamentals', 'overall',
-    'general', 'everything', 'all', 'total', 'complete', 'full', 'entire', 'whole',
-    'big picture', 'birds eye', 'high level', 'quick look', 'glance', 'snapshot'
-  ]
+  training: ['train', 'training', 'learn', 'learning', 'teach', 'teaching', 'practice', 'practicing', 'improve', 'improving', 'optimize', 'optimizing', 'enhance', 'enhancing', 'upgrade', 'upgrading', 'educate', 'educating', 'study', 'studying', 'develop', 'developing', 'refine', 'refining', 'tune', 'tuning', 'calibrate', 'calibrating', 'adapt', 'adapting', 'evolve', 'evolving', 'grow', 'growing', 'advance', 'advancing', 'progress', 'progressing', 'model', 'neural', 'network', 'ai', 'machine learning', 'ml', 'deep learning'],
+  suggestions: ['suggest', 'suggestion', 'suggestions', 'recommend', 'recommendation', 'recommendations', 'advise', 'advice', 'tip', 'tips', 'hint', 'hints', 'help', 'helping', 'guide', 'guidance', 'improve', 'improvement', 'improvements', 'optimize', 'optimization', 'better', 'best', 'ideal', 'perfect', 'enhance', 'enhancement', 'boost', 'boosting', 'upgrade', 'upgrading', 'maximize', 'maximizing', 'increase', 'increasing', 'fix', 'fixing', 'solve', 'solving', 'solution', 'solutions', 'idea', 'ideas', 'way', 'ways', 'method', 'methods', 'approach', 'what should', 'how can', 'how do', 'can you', 'could you', 'would you', 'please', 'need help', 'help me', 'show me', 'tell me', 'explain', 'clarify'],
+  power: ['power', 'watt', 'watts', 'w', 'torque', 'nm', 'newton', 'motor', 'engine', 'rpm', 'rev', 'revs', 'revolution', 'revolutions', 'rotation', 'rotations', 'spin', 'spinning', 'acceleration', 'accelerate', 'accelerating', 'speed up', 'speeding up', 'faster', 'fast', 'quick', 'quicker', 'rapid', 'velocity', 'throttle', 'gas', 'pedal', 'performance', 'horsepower', 'hp', 'thrust', 'force', 'push', 'pushing', 'pull', 'pulling', 'output', 'capacity', 'capability', 'strength', 'strong', 'powerful', 'weak', 'weakness', 'grunt', 'oomph', 'juice', 'muscle', 'kick', 'punch', 'boost', 'surge'],
+  efficiency: ['efficiency', 'efficient', 'inefficient', 'economy', 'economical', 'energy', 'energies', 'consumption', 'consume', 'consuming', 'usage', 'use', 'using', 'burn', 'burning', 'drain', 'draining', 'waste', 'wasting', 'save', 'saving', 'savings', 'conservation', 'conserve', 'conserving', 'mileage', 'mpg', 'range', 'distance', 'wh/km', 'wh', 'kwh', 'per km', 'per kilometer', 'per mile', 'fuel', 'gas', 'electric', 'electricity', 'discharge', 'discharging', 'charge', 'charging', 'drain rate', 'consumption rate', 'eco', 'eco mode', 'economical', 'frugal', 'thrifty', 'lean', 'green', 'sustainable'],
+  battery: ['battery', 'batteries', 'cell', 'cells', 'charge', 'charging', 'charged', 'charger', 'soc', 'state of charge', 'capacity', 'ah', 'amp hour', 'amp hours', 'ampere', 'voltage', 'volt', 'volts', 'v', 'power', 'juice', 'energy', 'stored', 'remaining', 'left', 'reserve', 'reserves', 'level', 'percentage', 'percent', '%', 'low', 'high', 'full', 'empty', 'dead', 'dying', 'life', 'lifespan', 'health', 'condition', 'degradation', 'wear', 'age', 'aging', 'cycle', 'cycles', 'discharge', 'discharging', 'pack', 'module', 'lithium', 'li-ion', 'lifepo4', 'lead acid', 'chemistry', 'internal resistance', 'sag', 'drop', 'cutoff', 'protection', 'bms'],
+  range: ['range', 'distance', 'far', 'how far', 'how long', 'miles', 'kilometers', 'km', 'travel', 'traveling', 'trip', 'journey', 'go', 'going', 'reach', 'reaching', 'mileage', 'endurance', 'stamina', 'coverage', 'span', 'extent', 'limit', 'limitation', 'run out', 'running out', 'last', 'lasting', 'duration', 'time', 'remaining', 'left', 'available', 'reserve', 'estimate', 'estimated', 'prediction', 'predicted', 'forecast', 'expected', 'potential', 'maximum', 'max', 'minimum', 'min'],
+  status: ['status', 'current', 'now', 'present', 'currently', 'right now', 'at the moment', 'stats', 'statistics', 'data', 'info', 'information', 'details', 'numbers', 'figures', 'readings', 'values', 'metrics', 'parameters', 'measurements', 'telemetry', 'what', 'whats', "what's", 'how', 'hows', "how's", 'where', 'wheres', "where's", 'show', 'display', 'tell', 'give', 'provide', 'report', 'update', 'overview', 'summary', 'snapshot', 'state', 'situation', 'condition', 'health', 'check'],
+  diagnostics: ['diagnostic', 'diagnostics', 'check', 'checking', 'test', 'testing', 'scan', 'scanning', 'problem', 'problems', 'issue', 'issues', 'error', 'errors', 'fault', 'faults', 'wrong', 'bad', 'broken', 'failure', 'failing', 'malfunction', 'malfunctioning', 'trouble', 'troubleshoot', 'troubleshooting', 'debug', 'debugging', 'fix', 'fixing', 'repair', 'repairing', 'health', 'healthy', 'unhealthy', 'sick', 'damage', 'damaged', 'wear', 'tear', 'inspection', 'inspect', 'inspecting', 'examine', 'examining', 'analysis', 'analyze', 'analyzing', 'evaluate', 'evaluating', 'assessment', 'assess', 'warning', 'warnings', 'alert', 'alerts', 'critical', 'danger', 'dangerous', 'risk'],
+  prediction: ['predict', 'prediction', 'predictions', 'forecast', 'forecasting', 'expect', 'expected', 'expecting', 'anticipate', 'anticipating', 'future', 'upcoming', 'next', 'later', 'will', 'would', 'should', 'could', 'might', 'may', 'probably', 'likely', 'unlikely', 'estimate', 'estimated', 'estimating', 'guess', 'guessing', 'projection', 'projecting', 'outlook', 'prospect', 'prognosis', 'trend', 'trending', 'pattern', 'patterns', 'compare', 'comparison', 'comparing', 'difference', 'differences', 'versus', 'vs', 'better', 'worse', 'best', 'worst', 'optimal', 'ideal', 'target', 'goal'],
+  speed: ['speed', 'speeding', 'velocity', 'fast', 'faster', 'fastest', 'slow', 'slower', 'slowest', 'quick', 'quicker', 'quickest', 'rapid', 'mph', 'kph', 'km/h', 'kmh', 'kilometers per hour', 'miles per hour', 'pace', 'rate', 'tempo', 'accelerate', 'acceleration', 'decelerate', 'deceleration', 'brake', 'braking', 'cruise', 'cruising', 'top speed', 'max speed', 'minimum speed', 'average speed', 'current speed', 'moving', 'motion', 'travel'],
+  temperature: ['temp', 'temperature', 'temperatures', 'hot', 'cold', 'warm', 'cool', 'heat', 'heating', 'overheat', 'overheating', 'thermal', 'celsius', 'fahrenheit', 'degrees', 'deg', 'c', 'f', 'cooling', 'cooler', 'hotter', 'warmer', 'burning', 'freeze', 'freezing'],
+  summary: ['summary', 'summarize', 'summarise', 'overview', 'brief', 'briefing', 'recap', 'recaps', 'rundown', 'roundup', 'digest', 'synopsis', 'abstract', 'outline', 'highlight', 'highlights', 'key points', 'main points', 'essentials', 'basics', 'fundamentals', 'overall', 'general', 'everything', 'all', 'total', 'complete', 'full', 'entire', 'whole', 'big picture', 'birds eye', 'high level', 'quick look', 'glance', 'snapshot']
 };
 
-// Function to detect which categories match the user's message
 function detectCategories(message) {
   const lowerMsg = message.toLowerCase();
   const matched = new Set();
@@ -1314,7 +1288,7 @@ function detectCategories(message) {
     for (const keyword of keywords) {
       if (lowerMsg.includes(keyword)) {
         matched.add(category);
-        break; // Found a match in this category, move to next category
+        break;
       }
     }
   }
@@ -1322,18 +1296,15 @@ function detectCategories(message) {
   return Array.from(matched);
 }
 
-// Generate comprehensive summary
 async function generateComprehensiveSummary() {
   let summary = `📊 COMPLETE RIDE SUMMARY\n\n`;
   
-  // Basic stats
   summary += `🚴 CURRENT STATUS:\n`;
   summary += `├─ Speed: ${currentData.speed.toFixed(1)} km/h\n`;
   summary += `├─ Distance: ${currentData.distance.toFixed(2)} km\n`;
   summary += `├─ Battery: ${currentData.soc.toFixed(1)}%\n`;
   summary += `└─ Energy/km: ${currentData.energyPerKm.toFixed(1)} Wh/km\n\n`;
   
-  // Power & Performance
   summary += `⚡ POWER & PERFORMANCE:\n`;
   summary += `├─ Power: ${currentData.power.toFixed(0)}W (${((currentData.power/VEHICLE_CONSTANTS.maxPower)*100).toFixed(1)}% of max)\n`;
   summary += `├─ Torque: ${currentData.torque.toFixed(2)} Nm\n`;
@@ -1342,8 +1313,7 @@ async function generateComprehensiveSummary() {
   summary += `├─ Current: ${currentData.current.toFixed(1)}A\n`;
   summary += `└─ Acceleration: ${currentData.acceleration.toFixed(2)} m/s²\n\n`;
   
-  // Efficiency & Range
-  const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / currentData.energyPerKm;
+  const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / Math.max(currentData.energyPerKm, 1);
   const remainingCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
   summary += `🔋 EFFICIENCY & RANGE:\n`;
   summary += `├─ Consumption: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
@@ -1351,7 +1321,6 @@ async function generateComprehensiveSummary() {
   summary += `├─ Remaining Energy: ${remainingCapacity.toFixed(0)} Wh\n`;
   summary += `└─ Total Distance: ${currentData.distance.toFixed(2)} km\n\n`;
   
-  // Physics Analysis
   if (currentData.speed > 5) {
     const limits = calculatePhysicalLimits(currentData);
     summary += `🌬️ AERODYNAMICS:\n`;
@@ -1361,7 +1330,6 @@ async function generateComprehensiveSummary() {
     summary += `└─ Efficiency: ${(limits.efficiency * 100).toFixed(1)}%\n\n`;
   }
   
-  // Battery Health
   if (currentData.current > 0.5) {
     const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
     const internalR = Math.abs(voltageSag / currentData.current);
@@ -1377,7 +1345,6 @@ async function generateComprehensiveSummary() {
     summary += `└─ Battery Condition: ${healthStatus === 'excellent' || healthStatus === 'good' ? '✅ Healthy' : '⚠️ Needs attention'}\n\n`;
   }
   
-  // AI Insights
   if (model && telemetryData.speed.length >= 5) {
     summary += `🧠 AI INSIGHTS:\n`;
     summary += `├─ Model Trained: ${trainingEpochs} epochs\n`;
@@ -1386,7 +1353,6 @@ async function generateComprehensiveSummary() {
     summary += `└─ Status: ${trainingEpochs > 0 ? 'Learning from your ride' : 'Warming up'}\n\n`;
   }
   
-  // Warnings & Alerts
   const alerts = [];
   if (currentData.soc < 20) alerts.push('🚨 Battery critically low!');
   if (currentData.power > VEHICLE_CONSTANTS.maxPower * 0.9) alerts.push('⚠️ Motor at maximum capacity');
@@ -1400,7 +1366,6 @@ async function generateComprehensiveSummary() {
     summary += `✅ ALL SYSTEMS NOMINAL\n\n`;
   }
   
-  // Neural suggestions if available
   if (model && telemetryData.speed.length >= 5) {
     summary += `💡 AI RECOMMENDATIONS:\n`;
     const suggestions = await generateNeuralSuggestions();
@@ -1410,7 +1375,6 @@ async function generateComprehensiveSummary() {
   return summary;
 }
 
-// REPLACE THE ENTIRE handleUserMessage() FUNCTION WITH THIS:
 async function handleUserMessage() {
   const input = document.getElementById('aiInput');
   if (!input) return;
@@ -1421,11 +1385,9 @@ async function handleUserMessage() {
   addAIMessage(message, 'user');
   input.value = '';
   
-  // Detect all matching categories
   const categories = detectCategories(message);
   let response = '';
   
-  // If no categories matched, show help
   if (categories.length === 0) {
     response = `🧠 voltstar neural ai here!\n\n`;
     response += `not sure what youre asking about, but here's what i can do:\n\n`;
@@ -1444,10 +1406,7 @@ async function handleUserMessage() {
     return;
   }
   
-  // Handle multiple categories
   const responses = [];
-  
-  // Priority order for responses
   const priorityOrder = ['summary', 'training', 'suggestions', 'diagnostics', 'prediction', 
                          'power', 'battery', 'efficiency', 'range', 'status', 'speed', 'temperature'];
   
@@ -1491,10 +1450,10 @@ async function handleUserMessage() {
         effResp += `aerodynamic drag: ${effLimits.dragPower.toFixed(0)}W\n`;
         effResp += `rolling resistance: ${effLimits.rollingPower.toFixed(0)}W\n`;
         effResp += `total resistance: ${effLimits.resistancePower.toFixed(0)}W\n\n`;
-        const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / currentData.energyPerKm;
-        effResp += `estimated range: ${estimatedRange.toFixed(1)} km\n`;
-        const remainingCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
-        effResp += `remaining energy: ${remainingCapacity.toFixed(0)} Wh\n`;
+        const estRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / Math.max(currentData.energyPerKm, 1);
+        effResp += `estimated range: ${estRange.toFixed(1)} km\n`;
+        const remCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
+        effResp += `remaining energy: ${remCapacity.toFixed(0)} Wh\n`;
         responses.push(effResp);
         break;
         
@@ -1530,7 +1489,6 @@ async function handleUserMessage() {
           issuesFound = true;
         }
         
-        const diagLimits = calculatePhysicalLimits(currentData);
         if (currentData.current > 0.5) {
           const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
           const internalR = Math.abs(voltageSag / currentData.current);
@@ -1554,14 +1512,7 @@ async function handleUserMessage() {
     }
   }
   
-  // Combine all responses (yo those lines were way too long)
   response = responses.join('\n\n' + '─'.repeat(15) + '\n\n');
-  
-  // If training was triggered, suggestions are already included
-  if (categories.includes('training') && categories.includes('suggestions')) {
-    // Avoid duplicate suggestions
-  }
-  
   addAIMessage(response, 'ai');
 }
 
@@ -1573,13 +1524,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initNeuralNetwork();
   setupFirebaseListeners();
   
-  // chart type selector
   const chartTypeSelect = document.getElementById('chartType');
   if (chartTypeSelect) {
     chartTypeSelect.addEventListener('change', updateChart);
   }
   
-  // chart checkboxes
   ['chartSpeed', 'chartVoltage', 'chartCurrent', 'chartPower'].forEach(id => {
     const checkbox = document.getElementById(id);
     if (checkbox) {
@@ -1587,7 +1536,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   
-  // ai chat input
   const aiInput = document.getElementById('aiInput');
   if (aiInput) {
     aiInput.addEventListener('keypress', (e) => {
@@ -1595,19 +1543,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   
-  // train button
   const trainBtn = document.getElementById('trainModelBtn');
   if (trainBtn) {
     trainBtn.addEventListener('click', trainNeuralNetwork);
   }
   
-  // send message button
   const sendBtn = document.getElementById('sendMessageBtn');
   if (sendBtn) {
     sendBtn.addEventListener('click', handleUserMessage);
   }
   
-  // clear chat button
   const clearChatBtn = document.getElementById('clearChatBtn');
   if (clearChatBtn) {
     clearChatBtn.addEventListener('click', () => {
@@ -1619,7 +1564,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   
-  // tab navigation
   const tabButtons = document.querySelectorAll('.tab-btn');
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1638,7 +1582,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   
-  // mobile sidebar toggle
   const aiToggleBtn = document.getElementById('aiToggleBtn');
   const aiSidebar = document.getElementById('aiSidebar');
   const closeSidebarBtn = document.getElementById('closeSidebarBtn');
@@ -1655,7 +1598,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   
-  // close sidebar when clicking outside on mobile
   document.addEventListener('click', (e) => {
     if (window.innerWidth <= 1400 && aiSidebar && aiSidebar.classList.contains('open')) {
       if (!aiSidebar.contains(e.target) && e.target !== aiToggleBtn) {
@@ -1664,283 +1606,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   
-  // yo we gotta update diagnostics regularly or it stays empty like a ghost town
   setInterval(() => {
-    const diagTab = document.getElementById('diagnosticsTab');
-    if (diagTab && diagTab.classList.contains('active') && telemetryData.speed.length > 0) {
+    if (telemetryData.speed.length > 0) {
       updateDiagnostics();
     }
-  }, 2000); // update every 2 seconds when diagnostics tab is open
-
-// force diagnostics update every 3 seconds if we got data
-setInterval(() => {
-  if (telemetryData.speed.length > 0) {
-    console.log('updating diagnostics, data points:', telemetryData.speed.length);
-    updateDiagnostics();
-  }
-}, 3000);
-
-console.log('✅ application initialized');
+  }, 2000);
 
   console.log('✅ application initialized');
   addTrainingLog('voltstar neural ai ready', 'success');
   addTrainingLog('waiting for telemetry data...', 'info');
   
-  // add welcome message to chat
   addAIMessage('hey! 👋 neural ai here and ready to analyze your ride\n\nstart sending telemetry data and ill learn from it in real-time. ask me anything about power, efficiency, battery, or performance!', 'ai');
 });
 
-// ADD THESE FUNCTIONS TO YOUR app.js FILE
-
-// Function to get color based on value and thresholds
-function getValueColor(value, thresholds) {
-  // thresholds: { excellent, good, moderate, warning }
-  if (value <= thresholds.excellent) return { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
-  if (value <= thresholds.good) return { color: 'var(--color-good)', glow: 'var(--glow-green)' };
-  if (value <= thresholds.moderate) return { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
-  if (value <= thresholds.warning) return { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
-  return { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
-}
-
-// Update speedometer gauge
-function updateSpeedometer(speed) {
-  const maxSpeed = VEHICLE_CONSTANTS.maxSpeed;
-  const percentage = Math.min(speed / maxSpeed, 1);
-  const arcLength = 251.2; // Full arc length
-  const offset = arcLength * (1 - percentage);
-  
-  // Update arc
-  const arc = document.getElementById('speedometer-arc');
-  if (arc) {
-    arc.style.strokeDashoffset = offset;
-  }
-  
-  // Update needle (rotate from -90deg to 90deg)
-  const angle = -90 + (percentage * 180);
-  const needle = document.getElementById('speedometer-needle');
-  if (needle) {
-    needle.style.transform = `rotate(${angle}deg)`;
-  }
-  
-  // Update color based on speed
-  const thresholds = {
-    excellent: maxSpeed * 0.3,
-    good: maxSpeed * 0.5,
-    moderate: maxSpeed * 0.7,
-    warning: maxSpeed * 0.9
-  };
-  const colorData = getValueColor(speed, thresholds);
-  
-  const dot = document.getElementById('speedometer-dot');
-  if (dot) {
-    dot.style.fill = colorData.color;
-    dot.style.filter = `drop-shadow(0 0 10px ${colorData.color})`;
-  }
-  
-  const speedValue = document.getElementById('speedValue');
-  if (speedValue) {
-    speedValue.style.color = colorData.color;
-    speedValue.style.textShadow = colorData.glow;
-  }
-}
-
-// Update battery gauge
-function updateBatteryGauge(soc, ah) {
-  const maxWidth = 130; // Max width of battery fill
-  const fillWidth = (soc / 100) * maxWidth;
-  
-  // Update fill width
-  const fill = document.getElementById('battery-fill');
-  if (fill) {
-    fill.setAttribute('width', fillWidth);
-  }
-  
-  // Update color based on SOC
-  const thresholds = {
-    excellent: 100, // Reversed - higher is better
-    good: 60,
-    moderate: 40,
-    warning: 20
-  };
-  
-  let colorData;
-  if (soc >= 80) colorData = { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
-  else if (soc >= 60) colorData = { color: 'var(--color-good)', glow: 'var(--glow-green)' };
-  else if (soc >= 40) colorData = { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
-  else if (soc >= 20) colorData = { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
-  else colorData = { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
-  
-  if (fill) {
-    fill.style.fill = colorData.color;
-  }
-  
-  const batteryText = document.getElementById('battery-text');
-  if (batteryText) {
-    batteryText.textContent = `${Math.round(soc)}%`;
-    batteryText.style.fill = colorData.color;
-  }
-  
-  const socValue = document.getElementById('socValue');
-  if (socValue) {
-    socValue.style.color = colorData.color;
-    socValue.style.textShadow = colorData.glow;
-  }
-  
-  // Update ah display
-  const ahValue = document.getElementById('ahValue');
-  if (ahValue) {
-    ahValue.textContent = ah.toFixed(2);
-  }
-}
-
-// Update metric cards with conditional colors
-function updateMetricColors() {
-  // Voltage - based on percentage of max
-  const voltagePercent = (currentData.voltage / VEHICLE_CONSTANTS.maxVoltage) * 100;
-  const voltageThresholds = { excellent: 100, good: 75, moderate: 60, warning: 50 };
-  let voltageColor;
-  if (voltagePercent >= 90) voltageColor = getValueColor(100, voltageThresholds);
-  else if (voltagePercent >= 75) voltageColor = getValueColor(80, voltageThresholds);
-  else if (voltagePercent >= 60) voltageColor = getValueColor(65, voltageThresholds);
-  else if (voltagePercent >= 50) voltageColor = getValueColor(55, voltageThresholds);
-  else voltageColor = getValueColor(40, voltageThresholds);
-  
-  const voltageEl = document.getElementById('voltageValue');
-  if (voltageEl) {
-    voltageEl.style.color = voltageColor.color;
-    voltageEl.style.textShadow = voltageColor.glow;
-  }
-  
-  // Current - based on percentage of max
-  const currentPercent = Math.abs(currentData.current / VEHICLE_CONSTANTS.maxCurrent) * 100;
-  const currentThresholds = { excellent: 30, good: 50, moderate: 70, warning: 90 };
-  const currentColor = getValueColor(currentPercent, currentThresholds);
-  
-  const currentEl = document.getElementById('currentValue');
-  if (currentEl) {
-    currentEl.style.color = currentColor.color;
-    currentEl.style.textShadow = currentColor.glow;
-  }
-  
-  // Power - based on percentage of max
-  const powerPercent = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
-  const powerThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const powerColor = getValueColor(powerPercent, powerThresholds);
-  
-  const powerEl = document.getElementById('powerValue');
-  if (powerEl) {
-    powerEl.style.color = powerColor.color;
-    powerEl.style.textShadow = powerColor.glow;
-  }
-  
-  // RPM - based on percentage of max
-  const rpmPercent = (currentData.rpm / VEHICLE_CONSTANTS.maxRPM) * 100;
-  const rpmThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const rpmColor = getValueColor(rpmPercent, rpmThresholds);
-  
-  const rpmEl = document.getElementById('rpmValue');
-  if (rpmEl) {
-    rpmEl.style.color = rpmColor.color;
-    rpmEl.style.textShadow = rpmColor.glow;
-  }
-  
-  // Torque - based on percentage of max
-  const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
-  const torqueThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const torqueColor = getValueColor(torquePercent, torqueThresholds);
-  
-  const torqueEl = document.getElementById('torqueValue');
-  if (torqueEl) {
-    torqueEl.style.color = torqueColor.color;
-    torqueEl.style.textShadow = torqueColor.glow;
-  }
-  
-  // Energy per km - lower is better
-  const energyThresholds = { excellent: 15, good: 25, moderate: 35, warning: 50 };
-  const energyColor = getValueColor(currentData.energyPerKm, energyThresholds);
-  
-  const energyEl = document.getElementById('energyPerKmValue');
-  if (energyEl) {
-    energyEl.style.color = energyColor.color;
-    energyEl.style.textShadow = energyColor.glow;
-  }
-  
-  // Acceleration - based on absolute value
-  const accelThresholds = { excellent: 1, good: 2, moderate: 3, warning: 4 };
-  const accelColor = getValueColor(Math.abs(currentData.acceleration), accelThresholds);
-  
-  const accelEl = document.getElementById('accelValue');
-  if (accelEl) {
-    accelEl.style.color = accelColor.color;
-    accelEl.style.textShadow = accelColor.glow;
-  }
-}
-
-// MODIFY your updateMetricsDisplay() function to call these new functions:
-function updateMetricsDisplay() {
-  // Update speedometer
-  updateSpeedometer(currentData.speed);
-  
-  // Update battery gauge
-  updateBatteryGauge(currentData.soc, telemetryData.ampHours[telemetryData.ampHours.length - 1] || 0);
-  
-  // Update other metrics
-  document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
-  document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
-  document.getElementById('powerValue').textContent = currentData.power.toFixed(0);
-  document.getElementById('rpmValue').textContent = currentData.rpm;
-  document.getElementById('torqueValue').textContent = currentData.torque.toFixed(1);
-  document.getElementById('energyPerKmValue').textContent = currentData.energyPerKm.toFixed(1);
-  
-  const accelElem = document.getElementById('accelValue');
-  if (accelElem) accelElem.textContent = currentData.acceleration.toFixed(2);
-  
-  // Update colors for all metrics
-  updateMetricColors();
-}
-
-// ALSO UPDATE the calculateTruePhysicalParameters function to handle missing ah:
-function calculateTruePhysicalParameters(dataPoint, index) {
-  const { speed, voltage, current, rpm, distance } = dataPoint;
-  
-  const power = voltage * current;
-  const omega = (2 * Math.PI * rpm) / 60;
-  const torque = omega > 0 ? power / omega : 0;
-  
-  let acceleration = 0;
-  if (index > 0) {
-    const prevSpeed = telemetryData.speed[index - 1] || speed;
-    const dt = 1;
-    const speedMs = speed / 3.6;
-    const prevSpeedMs = prevSpeed / 3.6;
-    acceleration = (speedMs - prevSpeedMs) / dt;
-  }
-  
-  let jerk = 0;
-  if (index > 1) {
-    const prevAccel = telemetryData.acceleration[index - 1] || acceleration;
-    const dt = 1;
-    jerk = (acceleration - prevAccel) / dt;
-  }
-  
-  const prevEnergy = index > 0 ? (telemetryData.energy[index - 1] || 0) : 0;
-  const energy = prevEnergy + (power / 3600);
-  
-  // FIX: Handle missing ah by integrating from current
-  let ampHours;
-  if (dataPoint.ah !== undefined && dataPoint.ah !== null) {
-    // Use provided ah value
-    ampHours = parseFloat(dataPoint.ah);
-  } else {
-    // Integrate from current (dt = 1 second)
-    const prevAh = index > 0 ? (telemetryData.ampHours[index - 1] || 0) : 0;
-    ampHours = prevAh + (current / 3600); // Ah = A * hours (1 second = 1/3600 hour)
-  }
-  
-  const totalAh = VEHICLE_CONSTANTS.batteryCapacity;
-  const soc = Math.max(0, Math.min(100, 100 - (ampHours / totalAh) * 100));
-  
-  return { power, torque, acceleration, jerk, energy, soc, ampHours };
-}
-
-console.log('🎯 voltstar neural ai ready!')
+console.log('🎯 voltstar neural ai ready!');
