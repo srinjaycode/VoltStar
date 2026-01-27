@@ -3,251 +3,508 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>VoltStar Neural AI</title>
-<link rel="stylesheet" href="style.css">
+<title>VoltStar GPS Tracking</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+<style>
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #141414;
+  --bg-card: rgba(20, 20, 20, 0.9);
+  --border-color: #1a1a1a;
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --color-excellent: #00ff00;
+  --color-good: #88ff00;
+  --color-moderate: #ffff00;
+  --color-warning: #ffaa00;
+  --color-critical: #ff0000;
+  --primary: #00ff00;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  --glow-green: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1rem;
+  min-height: 100vh;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(0, 255, 0, 0.1) 0%, rgba(0, 100, 0, 0.05) 100%);
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 255, 0, 0.2);
+  box-shadow: var(--shadow), inset 0 0 50px rgba(0, 255, 0, 0.05);
+}
+
+.header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-excellent);
+  margin-bottom: 0.5rem;
+  letter-spacing: 2px;
+  text-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 3px;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.3s ease;
+}
+
+.status-indicator span:first-child {
+  font-size: 1.2rem;
+}
+
+.status-connected {
+  background: rgba(0, 255, 0, 0.1);
+  color: var(--color-excellent);
+  border: 1px solid rgba(0, 255, 0, 0.3);
+  box-shadow: var(--glow-green);
+}
+
+.status-waiting {
+  background: rgba(255, 170, 0, 0.1);
+  color: var(--color-warning);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.map-section {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.map-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.map-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.map-btn {
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.map-btn:hover {
+  border-color: var(--color-excellent);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+.map-btn.active {
+  background: rgba(0, 255, 0, 0.2);
+  border-color: var(--color-excellent);
+  color: var(--color-excellent);
+  box-shadow: var(--glow-green);
+}
+
+#map {
+  height: 500px;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.metrics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gps-stats {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+.stats-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.stat-item {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 255, 0, 0.1);
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-excellent);
+  text-shadow: var(--glow-green);
+}
+
+.stat-unit {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+
+.telemetry-compact {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.telemetry-item {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 255, 0, 0.1);
+  text-align: center;
+}
+
+.telemetry-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.telemetry-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-excellent);
+}
+
+.chart-section {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  margin-bottom: 1rem;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.chart-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chart-controls select {
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.chart-controls select:hover {
+  border-color: var(--color-excellent);
+}
+
+.chart-wrapper {
+  position: relative;
+  height: 300px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  #map {
+    height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .telemetry-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .map-controls {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .map-btn {
+    width: 100%;
+  }
+  
+  #map {
+    height: 350px;
+  }
+  
+  .chart-wrapper {
+    height: 250px;
+  }
+}
+</style>
 </head>
 <body>
 
 <div class="container">
-  <!-- header -->
   <div class="header">
-    <h1>⚡ VOLTSTAR NEURAL AI ⚡</h1>
-    <div class="subtitle">SELF-LEARNING TELEMETRY SYSTEM</div>
+    <h1>🗺️ VOLTSTAR GPS TRACKING 🗺️</h1>
+    <div class="subtitle">REAL-TIME VEHICLE TELEMETRY & NAVIGATION</div>
   </div>
 
-  <!-- status bar -->
   <div class="status-bar">
     <div class="status-item">
-      <span class="status-label">Status</span>
+      <span class="status-label">Connection</span>
       <div id="connectionStatus" class="status-indicator status-waiting pulse">
         <span>●</span><span>WAITING...</span>
       </div>
     </div>
     <div class="status-item">
+      <span class="status-label">GPS Status</span>
+      <div id="gpsStatus" class="status-indicator status-waiting pulse">
+        <span>●</span><span>NO GPS</span>
+      </div>
+    </div>
+    <div class="status-item">
       <span class="status-label">Last Update</span>
-      <span id="lastUpdateTimestamp" style="color: var(--text); font-weight: 600;">--:--:--</span>
-    </div>
-    <div class="neural-badge">
-      <span>NEURAL ACTIVE</span>
+      <span id="lastUpdate" style="color: var(--text); font-weight: 600;">--:--:--</span>
     </div>
   </div>
 
-  <!-- neural stats -->
-  <div class="neural-stats-bar">
-    <div class="neural-stat">
-      <span class="neural-stat-label">Epochs</span>
-      <span id="trainingEpochs" class="neural-stat-value">0</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Accuracy</span>
-      <span id="modelAccuracy" class="neural-stat-value">0%</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Val Loss</span>
-      <span id="validationLoss" class="neural-stat-value">0.0000</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Predictions</span>
-      <span id="predictionCount" class="neural-stat-value">0</span>
-    </div>
-    <div class="neural-stat">
-      <span class="neural-stat-label">Status</span>
-      <span id="trainingStatus" class="neural-stat-value" style="font-size: 1rem;">READY</span>
-    </div>
-  </div>
-
-  <!-- COMPACT SPEEDOMETER & BATTERY GAUGES WITH GRADUATIONS -->
-  <div class="gauges-section">
-    <!-- Speedometer with graduations (0-60 km/h) -->
-    <div class="gauge-container">
-      <div class="gauge-label">SPEED</div>
-      <div class="speedometer">
-        <svg viewBox="0 0 200 130" class="speedometer-svg">
-          <!-- Background arc -->
-          <path d="M 30 100 A 70 70 0 1 1 170 100" 
-                stroke="#1a1a1a" stroke-width="12" fill="none"/>
-          
-          <!-- Active arc (changes color based on speed) -->
-          <path id="speedometer-arc" d="M 30 100 A 70 70 0 1 1 170 100" 
-                stroke="#00ff00" stroke-width="12" fill="none"
-                stroke-dasharray="424" stroke-dashoffset="424"
-                stroke-linecap="round"/>
-          
-          <!-- Graduation marks and labels -->
-          <g id="speed-graduations">
-            <!-- 0 km/h -->
-            <line x1="30" y1="100" x2="35" y2="105" stroke="#666" stroke-width="2"/>
-            <text x="20" y="110" fill="#666" font-size="10" text-anchor="middle">0</text>
-            
-            <!-- 10 km/h -->
-            <line x1="45" y1="62" x2="50" y2="67" stroke="#666" stroke-width="1.5"/>
-            <text x="38" y="60" fill="#666" font-size="9" text-anchor="middle">10</text>
-            
-            <!-- 20 km/h -->
-            <line x1="72" y1="38" x2="77" y2="43" stroke="#666" stroke-width="2"/>
-            <text x="68" y="32" fill="#666" font-size="10" text-anchor="middle">20</text>
-            
-            <!-- 30 km/h (center) -->
-            <line x1="100" y1="30" x2="100" y2="37" stroke="#666" stroke-width="2"/>
-            <text x="100" y="24" fill="#888" font-size="11" font-weight="bold" text-anchor="middle">30</text>
-            
-            <!-- 40 km/h -->
-            <line x1="128" y1="38" x2="123" y2="43" stroke="#666" stroke-width="2"/>
-            <text x="132" y="32" fill="#666" font-size="10" text-anchor="middle">40</text>
-            
-            <!-- 50 km/h -->
-            <line x1="155" y1="62" x2="150" y2="67" stroke="#666" stroke-width="1.5"/>
-            <text x="162" y="60" fill="#666" font-size="9" text-anchor="middle">50</text>
-            
-            <!-- 60 km/h -->
-            <line x1="170" y1="100" x2="165" y2="105" stroke="#666" stroke-width="2"/>
-            <text x="180" y="110" fill="#666" font-size="10" text-anchor="middle">60</text>
-          </g>
-          
-          <!-- Center dot -->
-          <circle cx="100" cy="100" r="6" fill="#00ff00" id="speedometer-dot"/>
-          
-          <!-- Needle -->
-          <line id="speedometer-needle" x1="100" y1="100" x2="100" y2="40" 
-                stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"
-                style="transform-origin: 100px 100px; transform: rotate(-135deg);"/>
-        </svg>
-        <div class="gauge-value">
-          <span id="speedValue" class="gauge-value-number">0</span>
-          <span class="gauge-value-unit">km/h</span>
+  <div class="main-grid">
+    <div class="map-section">
+      <div class="map-header">
+        <span class="map-title">📍 Live Map</span>
+        <div class="map-controls">
+          <button id="followBtn" class="map-btn active">🎯 Auto Follow</button>
+          <button id="clearPathBtn" class="map-btn">🗑️ Clear Path</button>
         </div>
       </div>
+      <div id="map"></div>
     </div>
 
-    <!-- Battery with proportional fill -->
-    <div class="gauge-container">
-      <div class="gauge-label">BATTERY</div>
-      <div class="battery-gauge">
-        <svg viewBox="0 0 200 90" class="battery-svg">
-          <!-- Battery outline -->
-          <rect x="20" y="25" width="140" height="50" rx="5" ry="5" 
-                fill="none" stroke="#333" stroke-width="3"/>
-          <!-- Battery terminal -->
-          <rect x="160" y="40" width="15" height="20" rx="3" ry="3" 
-                fill="#333" stroke="none"/>
-          
-          <!-- Battery fill background (dark) -->
-          <rect x="25" y="30" width="130" height="40" 
-                rx="3" ry="3" fill="#0a0a0a"/>
-          
-          <!-- Battery fill (dynamic width and color based on SOC) -->
-          <rect id="battery-fill" x="25" y="30" width="130" height="40" 
-                rx="3" ry="3" fill="#00ff00"/>
-          
-          <!-- Battery percentage text -->
-          <text x="90" y="55" text-anchor="middle" 
-                fill="#fff" font-size="16" font-weight="bold" id="battery-text">100%</text>
-        </svg>
-        <div class="gauge-value">
-          <span id="socValue" class="gauge-value-number">100</span>
-          <span class="gauge-value-unit">%</span>
+    <div class="metrics-section">
+      <div class="gps-stats">
+        <div class="stats-title">📡 GPS Data</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Latitude</span>
+            <div class="stat-value" id="latitude">--</div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Longitude</span>
+            <div class="stat-value" id="longitude">--</div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Speed</span>
+            <div class="stat-value" id="speed">0<span class="stat-unit">km/h</span></div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Altitude</span>
+            <div class="stat-value" id="altitude">0<span class="stat-unit">m</span></div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Accuracy</span>
+            <div class="stat-value" id="accuracy">--<span class="stat-unit">m</span></div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Distance</span>
+            <div class="stat-value" id="distance">0.00<span class="stat-unit">km</span></div>
+          </div>
         </div>
-        <div class="gauge-subvalue">
-          <span id="ahValue" class="gauge-subvalue-number">0.0</span>
-          <span class="gauge-subvalue-unit">Ah used</span>
+      </div>
+
+      <div class="telemetry-compact">
+        <div class="stats-title">⚡ Vehicle Telemetry</div>
+        <div class="telemetry-grid">
+          <div class="telemetry-item">
+            <div class="telemetry-label">Voltage</div>
+            <div class="telemetry-value" id="voltage">0.0 V</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">Current</div>
+            <div class="telemetry-value" id="current">0.0 A</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">Power</div>
+            <div class="telemetry-value" id="power">0 W</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">RPM</div>
+            <div class="telemetry-value" id="rpm">0</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">SOC</div>
+            <div class="telemetry-value" id="soc">100%</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">Energy</div>
+            <div class="telemetry-value" id="energy">0 Wh/km</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- metrics grid -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Voltage</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartVoltage" checked>
-          <label for="chartVoltage">Plot</label>
-        </div>
-      </div>
-      <div id="voltageValue" class="metric-value color-dynamic">0.0</div>
-      <div class="metric-unit">V</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Current</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartCurrent" checked>
-          <label for="chartCurrent">Plot</label>
-        </div>
-      </div>
-      <div id="currentValue" class="metric-value color-dynamic">0.0</div>
-      <div class="metric-unit">A</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Power</span>
-        <div class="metric-checkbox">
-          <input type="checkbox" id="chartPower">
-          <label for="chartPower">Plot</label>
-        </div>
-      </div>
-      <div id="powerValue" class="metric-value color-dynamic">0</div>
-      <div class="metric-unit">W</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">RPM</span>
-      </div>
-      <div id="rpmValue" class="metric-value color-dynamic">0</div>
-      <div class="metric-unit">rev/min</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Torque</span>
-      </div>
-      <div id="torqueValue" class="metric-value color-dynamic">0.0</div>
-      <div class="metric-unit">Nm</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Energy/km</span>
-      </div>
-      <div id="energyPerKmValue" class="metric-value color-dynamic">0.0</div>
-      <div class="metric-unit">Wh/km</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-header">
-        <span class="metric-label">Accel</span>
-      </div>
-      <div id="accelValue" class="metric-value color-dynamic">0.00</div>
-      <div class="metric-unit">m/s²</div>
-    </div>
-  </div>
-
-  <!-- chart section -->
   <div class="chart-section">
     <div class="chart-header">
-      <div class="chart-title">📊 TELEMETRY ANALYSIS</div>
+      <div class="chart-title">📊 Speed & Altitude Profile</div>
       <div class="chart-controls">
-        <div class="control-group">
-          <label>View:</label>
-          <select id="chartType">
-            <option value="telemetry">Telemetry</option>
-            <option value="power-rpm">Power vs RPM</option>
-            <option value="torque-rpm">Torque vs RPM</option>
-            <option value="acceleration">Acceleration & Jerk</option>
-            <option value="energy-distance">Energy vs Distance</option>
-            <option value="soc-distance">SOC vs Distance</option>
-            <option value="voltage-current">V-I Curve</option>
-            <option value="speed-distance">Speed vs Distance</option>
-          </select>
-        </div>
+        <select id="chartType">
+          <option value="speed">Speed Over Time</option>
+          <option value="altitude">Altitude Profile</option>
+          <option value="power">Power Output</option>
+          <option value="battery">Battery SOC</option>
+        </select>
       </div>
     </div>
     <div class="chart-wrapper">
@@ -256,62 +513,347 @@
   </div>
 </div>
 
-<!-- ai sidebar -->
-<div class="ai-sidebar" id="aiSidebar">
-  <div class="ai-sidebar-header">
-    <button class="ai-close-mobile" id="closeSidebarBtn">✕</button>
-    <div class="ai-sidebar-title">
-      <div class="ai-status-dot"></div>
-      <span>NEURAL AI ASSISTANT</span>
-    </div>
-    <div class="tab-nav">
-      <button class="tab-btn active" data-tab="chat">Chat</button>
-      <button class="tab-btn" data-tab="diagnostics">Diagnostics</button>
-      <button class="tab-btn" data-tab="training">Training</button>
-    </div>
-  </div>
+<script>
+console.log('🚀 VoltStar GPS Tracking - Initializing...');
 
-  <!-- chat tab -->
-  <div id="chatTab" class="tab-content active">
-    <div class="ai-chat-container">
-      <div id="aiMessages" class="ai-messages"></div>
-      <div class="ai-chat-input">
-        <div class="ai-input-group">
-          <input type="text" id="aiInput" class="ai-input" placeholder="Ask me anything about your ride...">
-          <button id="sendMessageBtn" class="ai-send">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-            </svg>
-          </button>
-        </div>
-        <button class="clear-memory-btn" id="clearChatBtn">Clear Chat History</button>
-      </div>
-    </div>
-  </div>
+// Firebase config
+const firebaseConfig = {
+  databaseURL: "https://voltstar01-default-rtdb.europe-west1.firebasedatabase.app"
+};
 
-  <!-- diagnostics tab -->
-  <div id="diagnosticsTab" class="tab-content">
-    <div id="aiDiagnostics" class="ai-diagnostics"></div>
-  </div>
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
 
-  <!-- training tab -->
-  <div id="trainingTab" class="tab-content">
-    <div class="ai-training">
-      <div class="training-controls">
-        <button id="trainModelBtn" class="train-btn">🧠 Train Model</button>
-      </div>
-      <div id="trainingLog" class="training-log"></div>
-    </div>
-  </div>
-</div>
+// Map initialization
+let map = L.map('map').setView([25.3463, 55.4209], 13); // Default: Sharjah, UAE
 
-<!-- mobile toggle -->
-<button class="ai-toggle" id="aiToggleBtn">
-  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-  </svg>
-</button>
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19
+}).addTo(map);
 
-<script src="app.js"></script>
-</body>
-</html>
+// Map markers and tracking
+let currentMarker = null;
+let pathPolyline = null;
+let pathCoordinates = [];
+let autoFollow = true;
+let isConnected = false;
+
+// GPS data storage
+let gpsData = {
+  latitude: null,
+  longitude: null,
+  speed: 0,
+  altitude: 0,
+  accuracy: null,
+  totalDistance: 0,
+  timestamps: [],
+  speeds: [],
+  altitudes: [],
+  powers: [],
+  socs: []
+};
+
+// Telemetry data
+let telemetryData = {
+  voltage: 0,
+  current: 0,
+  power: 0,
+  rpm: 0,
+  soc: 100,
+  energyPerKm: 0
+};
+
+// Custom vehicle icon
+const vehicleIcon = L.divIcon({
+  className: 'vehicle-marker',
+  html: '<div style="background: #00ff00; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 20px rgba(0,255,0,0.8);"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
+// Chart initialization
+let telemetryChart;
+
+function initChart() {
+  const ctx = document.getElementById('telemetryChart').getContext('2d');
+  telemetryChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Speed (km/h)',
+        data: [],
+        borderColor: '#00ff00',
+        backgroundColor: 'rgba(0, 255, 0, 0.1)',
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: '#e2e8f0', font: { size: 11, weight: 600 } }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(21, 25, 50, 0.95)',
+          titleColor: '#00ff00',
+          bodyColor: '#e2e8f0'
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(45, 52, 84, 0.3)' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        },
+        y: {
+          grid: { color: 'rgba(45, 52, 84, 0.3)' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        }
+      },
+      animation: { duration: 300 }
+    }
+  });
+}
+
+function updateChart() {
+  const chartType = document.getElementById('chartType').value;
+  
+  let data, label, color;
+  switch(chartType) {
+    case 'speed':
+      data = gpsData.speeds;
+      label = 'Speed (km/h)';
+      color = '#00ff00';
+      break;
+    case 'altitude':
+      data = gpsData.altitudes;
+      label = 'Altitude (m)';
+      color = '#00d9ff';
+      break;
+    case 'power':
+      data = gpsData.powers;
+      label = 'Power (W)';
+      color = '#ffaa00';
+      break;
+    case 'battery':
+      data = gpsData.socs;
+      label = 'Battery SOC (%)';
+      color = '#88ff00';
+      break;
+  }
+  
+  telemetryChart.data.labels = gpsData.timestamps;
+  telemetryChart.data.datasets[0].data = data;
+  telemetryChart.data.datasets[0].label = label;
+  telemetryChart.data.datasets[0].borderColor = color;
+  telemetryChart.data.datasets[0].backgroundColor = color + '1A';
+  telemetryChart.update('none');
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function updateGPSData(data) {
+  const lat = parseFloat(data.latitude);
+  const lon = parseFloat(data.longitude);
+  const speed = parseFloat(data.speed) || 0;
+  const altitude = parseFloat(data.altitude) || 0;
+  const accuracy = parseFloat(data.accuracy) || null;
+  
+  if (isNaN(lat) || isNaN(lon)) return;
+  
+  // Calculate distance if we have previous position
+  if (gpsData.latitude !== null && gpsData.longitude !== null) {
+    const dist = calculateDistance(gpsData.latitude, gpsData.longitude, lat, lon);
+    gpsData.totalDistance += dist;
+  }
+  
+  gpsData.latitude = lat;
+  gpsData.longitude = lon;
+  gpsData.speed = speed;
+  gpsData.altitude = altitude;
+  gpsData.accuracy = accuracy;
+  
+  // Store for chart
+  const timestamp = new Date().toLocaleTimeString();
+  gpsData.timestamps.push(timestamp);
+  gpsData.speeds.push(speed);
+  gpsData.altitudes.push(altitude);
+  gpsData.powers.push(telemetryData.power);
+  gpsData.socs.push(telemetryData.soc);
+  
+  // Keep only last 50 points
+  if (gpsData.timestamps.length > 50) {
+    gpsData.timestamps.shift();
+    gpsData.speeds.shift();
+    gpsData.altitudes.shift();
+    gpsData.powers.shift();
+    gpsData.socs.shift();
+  }
+  
+  updateMap(lat, lon);
+  updateGPSDisplay();
+  updateChart();
+  
+  const gpsStatus = document.getElementById('gpsStatus');
+  gpsStatus.className = 'status-indicator status-connected';
+  gpsStatus.innerHTML = '<span>●</span><span>GPS ACTIVE</span>';
+}
+
+function updateMap(lat, lon) {
+  const position = [lat, lon];
+  
+  // Update or create marker
+  if (currentMarker) {
+    currentMarker.setLatLng(position);
+  } else {
+    currentMarker = L.marker(position, { icon: vehicleIcon }).addTo(map);
+    currentMarker.bindPopup('Vehicle Position');
+  }
+  
+  // Update path
+  pathCoordinates.push(position);
+  
+  if (pathPolyline) {
+    pathPolyline.setLatLngs(pathCoordinates);
+  } else {
+    pathPolyline = L.polyline(pathCoordinates, {
+      color: '#00ff00',
+      weight: 3,
+      opacity: 0.7
+    }).addTo(map);
+  }
+  
+  // Auto follow
+  if (autoFollow) {
+    map.setView(position, map.getZoom());
+  }
+}
+
+function updateGPSDisplay() {
+  document.getElementById('latitude').textContent = gpsData.latitude ? gpsData.latitude.toFixed(6) : '--';
+  document.getElementById('longitude').textContent = gpsData.longitude ? gpsData.longitude.toFixed(6) : '--';
+  document.getElementById('speed').innerHTML = `${gpsData.speed.toFixed(1)}<span class="stat-unit">km/h</span>`;
+  document.getElementById('altitude').innerHTML = `${gpsData.altitude.toFixed(0)}<span class="stat-unit">m</span>`;
+  document.getElementById('accuracy').innerHTML = gpsData.accuracy ? `${gpsData.accuracy.toFixed(1)}<span class="stat-unit">m</span>` : '--';
+  document.getElementById('distance').innerHTML = `${gpsData.totalDistance.toFixed(2)}<span class="stat-unit">km</span>`;
+}
+
+function updateTelemetryDisplay() {
+  document.getElementById('voltage').textContent = telemetryData.voltage.toFixed(1) + ' V';
+  document.getElementById('current').textContent = telemetryData.current.toFixed(1) + ' A';
+  document.getElementById('power').textContent = telemetryData.power.toFixed(0) + ' W';
+  document.getElementById('rpm').textContent = telemetryData.rpm;
+  document.getElementById('soc').textContent = telemetryData.soc.toFixed(0) + '%';
+  document.getElementById('energy').textContent = telemetryData.energyPerKm.toFixed(1) + ' Wh/km';
+}
+
+function setupFirebaseListeners() {
+  console.log('🔗 Setting up Firebase listeners...');
+  
+  // Listen for GPS data
+  const gpsRef = database.ref('/gps_location');
+  gpsRef.on('value', (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      updateGPSData(data);
+      isConnected = true;
+      updateConnectionStatus(true);
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    }
+  });
+  
+  // Listen for telemetry data
+  const telemetryRef = database.ref('/cycle_readings');
+  telemetryRef.limitToLast(1).on('value', (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const latest = Object.values(data)[0];
+      
+      telemetryData.voltage = parseFloat(latest.voltage) || 0;
+      telemetryData.current = parseFloat(latest.current) || 0;
+      telemetryData.power = telemetryData.voltage * telemetryData.current;
+      telemetryData.rpm = parseInt(latest.rpm) || 0;
+      
+      // Calculate SOC from Ah if available
+      if (latest.ah) {
+        const usedAh = parseFloat(latest.ah);
+        const totalAh = 26; // Battery capacity
+        telemetryData.soc = Math.max(0, Math.min(100, 100 - (usedAh / totalAh) * 100));
+      }
+      
+      // Calculate energy per km
+      if (gpsData.totalDistance > 0.01) {
+        const totalEnergy = telemetryData.power * (gpsData.timestamps.length / 3600); // Rough estimate
+        telemetryData.energyPerKm = (totalEnergy / gpsData.totalDistance) * 1000;
+      }
+      
+      updateTelemetryDisplay();
+    }
+  });
+}
+
+function updateConnectionStatus(connected) {
+  const statusEl = document.getElementById('connectionStatus');
+  
+  if (connected) {
+    statusEl.className = 'status-indicator status-connected';
+    statusEl.innerHTML = '<span>●</span><span>CONNECTED</span>';
+  } else {
+    statusEl.className = 'status-indicator status-waiting pulse';
+    statusEl.innerHTML = '<span>●</span><span>WAITING...</span>';
+  }
+}
+
+// Event listeners
+document.getElementById('followBtn').addEventListener('click', () => {
+  autoFollow = !autoFollow;
+  const btn = document.getElementById('followBtn');
+  
+  if (autoFollow) {
+    btn.classList.add('active');
+    btn.textContent = '🎯 Auto Follow';
+    if (gpsData.latitude && gpsData.longitude) {
+      map.setView([gpsData.latitude, gpsData.longitude], map.getZoom());
+    }
+  } else {
+    btn.classList.remove('active');
+    btn.textContent = '📍 Manual';
+  }
+});
+
+document.getElementById('clearPathBtn').addEventListener('click', () => {
+  if (pathPolyline) {
+    map.removeLayer(pathPolyline);
+    pathPolyline = null;
+  }
+  pathCoordinates = [];
+  gpsData.totalDistance = 0;
+  document.getElementById('distance').innerHTML = `0.00<span class="stat-unit">km</span>`;
+});
+
+document.getElementById('chartType').addEventListener('change', updateChart);
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('🎯 Initializing VoltStar GPS Tracking...');
+  
+  initChart();
+  setupFirebaseListeners();
+  
+  console.log('✅ Application initialized');
+});
+
+console.log('🎯 VoltStar GPS Tracking ready!')
