@@ -1,4 +1,4 @@
-/* voltstar neural ai - pure black theme with green accents */
+/* voltstar neural ai - black & green theme */
 
 :root {
   --bg-primary: #000000;
@@ -195,7 +195,7 @@ body {
   text-shadow: var(--glow-green);
 }
 
-/* COMPACT GAUGES SECTION - same size as other metrics */
+/* COMPACT GAUGES SECTION */
 .gauges-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -247,7 +247,7 @@ body {
   margin-bottom: 0.75rem;
 }
 
-/* Compact Speedometer with graduations */
+/* Compact Speedometer */
 .speedometer {
   display: flex;
   flex-direction: column;
@@ -293,7 +293,7 @@ body {
   font-weight: 600;
 }
 
-/* Compact Battery with proportional fill */
+/* Compact Battery */
 .battery-gauge {
   display: flex;
   flex-direction: column;
@@ -417,7 +417,6 @@ body {
   font-weight: 500;
 }
 
-/* Dynamic color classes */
 .color-dynamic {
   transition: color 0.3s ease, text-shadow 0.3s ease;
 }
@@ -642,6 +641,10 @@ body {
   border: 1px solid rgba(0, 255, 0, 0.2);
   background: rgba(0, 0, 0, 0.5);
   animation: slideIn 0.3s ease;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @keyframes slideIn {
@@ -690,18 +693,6 @@ body {
   word-wrap: break-word;
   overflow-wrap: anywhere;
   max-width: 100%;
-}
-
-.ai-message {
-  padding: 1rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(0, 255, 0, 0.2);
-  background: rgba(0, 0, 0, 0.5);
-  animation: slideIn 0.3s ease;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  max-width: 100%;
-  box-sizing: border-box;
 }
 
 .ai-chat-input {

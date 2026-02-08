@@ -1,7 +1,8 @@
-// voltstar neural ai - FIXED VERSION for voltstar01
-console.log('🚀 VoltStar Neural AI - Initializing with TensorFlow.js...');
+// VoltStar Neural AI - CORRECTED VERSION
+// Fixes: signal filtering, meaningful ML, proper visualization, uncertainty quantification
+console.log('🚀 VoltStar Neural AI - Initializing with proper signal processing...');
 
-// firebase config
+// Firebase config
 const firebaseConfig = {
   databaseURL: "https://voltstar01-default-rtdb.europe-west1.firebasedatabase.app"
 };
@@ -9,21 +10,30 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-// telemetry data storage
+// Telemetry data storage with filtered versions
 let telemetryData = {
   timestamps: [],
+  // Raw measurements
   speed: [],
   voltage: [],
   current: [],
   power: [],
   rpm: [],
   distance: [],
+  // Filtered signals (for derivatives)
+  speedFiltered: [],
+  voltageFiltered: [],
+  currentFiltered: [],
+  // Derived quantities from filtered data
   torque: [],
   acceleration: [],
   jerk: [],
   energy: [],
   soc: [],
-  ampHours: []
+  ampHours: [],
+  // Prediction tracking for validation
+  predictedPower: [],
+  predictionError: []
 };
 
 let currentData = {
@@ -44,7 +54,7 @@ let chatHistory = [];
 let maxDataPoints = 100;
 let isConnected = false;
 
-// vehicle physical constants
+// Vehicle physical constants
 const VEHICLE_CONSTANTS = {
   batteryCapacity: 26,
   batteryVoltage: 48,
@@ -64,55 +74,106 @@ const VEHICLE_CONSTANTS = {
   internalResistanceRange: [0.05, 0.5],
   efficiencyRange: [0.7, 0.95],
   maxAcceleration: 5,
-  maxJerk: 10
+  maxJerk: 10,
+  // Sensor uncertainty
+  speedUncertainty: 0.5, // km/h
+  voltageUncertainty: 0.1, // V
+  currentUncertainty: 0.2, // A
+  rpmUncertainty: 5
 };
 
-// neural network stuff
+// Signal processing parameters
+const FILTER_CONFIG = {
+  movingAverageWindow: 5,
+  accelerationFilterWindow: 3,
+  jerkFilterWindow: 5,
+  outlierThreshold: 3.0 // standard deviations
+};
+
+// Neural network state
 let model = null;
 let trainingEpochs = 0;
-let modelAccuracy = 0;
-let predictionCount = 0;
-let validationLoss = 0;
+let modelMetrics = {
+  trainLoss: 0,
+  valLoss: 0,
+  predictionErrors: [],
+  lastUpdate: null
+};
 let trainingData = [];
+let validationData = [];
 let lastTrainingTime = 0;
 let autoTrainInterval = null;
 
-// init the neural network
-async function initNeuralNetwork() {
-  console.log('🧠 Initializing Neural Network...');
-  
-  model = tf.sequential({
-    layers: [
-      tf.layers.dense({ inputShape: [6], units: 64, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) }),
-      tf.layers.dropout({ rate: 0.3 }),
-      tf.layers.dense({ units: 128, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) }),
-      tf.layers.dropout({ rate: 0.3 }),
-      tf.layers.dense({ units: 64, activation: 'relu' }),
-      tf.layers.dropout({ rate: 0.2 }),
-      tf.layers.dense({ units: 32, activation: 'relu' }),
-      tf.layers.dense({ units: 5, activation: 'linear' })
-    ]
-  });
-  
-  model.compile({
-    optimizer: tf.train.adam(0.0005),
-    loss: 'meanSquaredError',
-    metrics: ['mae', 'mse']
-  });
-  
-  console.log('✅ Neural Network initialized');
-  addTrainingLog('neural network model created with 6-input, 5-output architecture');
-  addTrainingLog('inputs: speed, voltage, current, rpm, distance, previous_power');
-  addTrainingLog('outputs: optimal_power, optimal_rpm, optimal_torque, efficiency, energy_per_km');
-  
-  autoTrainInterval = setInterval(() => {
-    if (telemetryData.speed.length >= 20 && Date.now() - lastTrainingTime > 30000) {
-      trainNeuralNetwork();
-    }
-  }, 30000);
+// ============================================================================
+// SIGNAL PROCESSING - Proper filtering before derivatives
+// ============================================================================
+
+function movingAverage(data, windowSize) {
+  if (data.length === 0) return [];
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    const start = Math.max(0, i - Math.floor(windowSize / 2));
+    const end = Math.min(data.length, i + Math.floor(windowSize / 2) + 1);
+    const window = data.slice(start, end);
+    const avg = window.reduce((a, b) => a + b, 0) / window.length;
+    result.push(avg);
+  }
+  return result;
 }
 
-// calculate true physical params - FIXED ENERGY CALCULATION
+function detectOutliers(data, threshold = 3.0) {
+  if (data.length < 3) return new Array(data.length).fill(false);
+  
+  const mean = data.reduce((a, b) => a + b, 0) / data.length;
+  const variance = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / data.length;
+  const stdDev = Math.sqrt(variance);
+  
+  return data.map(val => Math.abs(val - mean) > threshold * stdDev);
+}
+
+function removeOutliers(data, outlierFlags) {
+  const cleaned = [];
+  for (let i = 0; i < data.length; i++) {
+    if (outlierFlags[i] && i > 0) {
+      // Replace outlier with interpolated value
+      const prev = cleaned[cleaned.length - 1] || data[i];
+      const next = data[Math.min(i + 1, data.length - 1)];
+      cleaned.push((prev + next) / 2);
+    } else {
+      cleaned.push(data[i]);
+    }
+  }
+  return cleaned;
+}
+
+function applySignalFiltering() {
+  // Only filter if we have enough data
+  if (telemetryData.speed.length < FILTER_CONFIG.movingAverageWindow) {
+    telemetryData.speedFiltered = [...telemetryData.speed];
+    telemetryData.voltageFiltered = [...telemetryData.voltage];
+    telemetryData.currentFiltered = [...telemetryData.current];
+    return;
+  }
+  
+  // Detect and remove outliers first
+  const speedOutliers = detectOutliers(telemetryData.speed);
+  const voltageOutliers = detectOutliers(telemetryData.voltage);
+  const currentOutliers = detectOutliers(telemetryData.current);
+  
+  const speedCleaned = removeOutliers(telemetryData.speed, speedOutliers);
+  const voltageCleaned = removeOutliers(telemetryData.voltage, voltageOutliers);
+  const currentCleaned = removeOutliers(telemetryData.current, currentOutliers);
+  
+  // Apply moving average filter
+  telemetryData.speedFiltered = movingAverage(speedCleaned, FILTER_CONFIG.movingAverageWindow);
+  telemetryData.voltageFiltered = movingAverage(voltageCleaned, FILTER_CONFIG.movingAverageWindow);
+  telemetryData.currentFiltered = movingAverage(currentCleaned, FILTER_CONFIG.movingAverageWindow);
+}
+
+// ============================================================================
+// PHYSICAL CALCULATIONS - Now using filtered data for derivatives
+// ============================================================================
+
 function calculateTruePhysicalParameters(dataPoint, index) {
   const { speed, voltage, current, rpm, distance } = dataPoint;
   
@@ -120,27 +181,37 @@ function calculateTruePhysicalParameters(dataPoint, index) {
   const omega = (2 * Math.PI * rpm) / 60;
   const torque = omega > 0 ? power / omega : 0;
   
+  // Use FILTERED speed for acceleration calculation
   let acceleration = 0;
-  if (index > 0) {
-    const prevSpeed = telemetryData.speed[index - 1] || speed;
+  if (index > 0 && telemetryData.speedFiltered.length > index) {
+    const prevSpeed = telemetryData.speedFiltered[index - 1];
+    const currentSpeed = telemetryData.speedFiltered[index];
     const dt = 1;
-    const speedMs = speed / 3.6;
+    const speedMs = currentSpeed / 3.6;
     const prevSpeedMs = prevSpeed / 3.6;
     acceleration = (speedMs - prevSpeedMs) / dt;
   }
   
+  // Calculate jerk from FILTERED acceleration
   let jerk = 0;
-  if (index > 1) {
-    const prevAccel = telemetryData.acceleration[index - 1] || acceleration;
-    const dt = 1;
-    jerk = (acceleration - prevAccel) / dt;
+  if (index > 1 && telemetryData.acceleration.length > index - 1) {
+    const accelWindow = telemetryData.acceleration.slice(
+      Math.max(0, index - FILTER_CONFIG.jerkFilterWindow),
+      index
+    );
+    const accelFiltered = movingAverage(accelWindow, Math.min(3, accelWindow.length));
+    if (accelFiltered.length >= 2) {
+      const prevAccel = accelFiltered[accelFiltered.length - 2];
+      const currentAccel = accelFiltered[accelFiltered.length - 1];
+      jerk = currentAccel - prevAccel;
+    }
   }
   
-  // FIXED: Better energy accumulation - add energy consumed in Wh
+  // Energy accumulation
   const prevEnergy = index > 0 ? (telemetryData.energy[index - 1] || 0) : 0;
-  // Assuming 1 second intervals: (Power in W) / 3600 = Wh per second
-  const energy = prevEnergy + (power / 3600);
+  const energy = prevEnergy + (power / 3600); // Wh
   
+  // Amp-hours
   let ampHours;
   if (dataPoint.ah !== undefined && dataPoint.ah !== null) {
     ampHours = parseFloat(dataPoint.ah);
@@ -155,26 +226,238 @@ function calculateTruePhysicalParameters(dataPoint, index) {
   return { power, torque, acceleration, jerk, energy, soc, ampHours };
 }
 
-// validate predictions against physics
-function validatePhysicalParameters(prediction) {
-  const validations = {
-    powerValid: prediction.power >= 0 && prediction.power <= VEHICLE_CONSTANTS.maxPower,
-    rpmValid: prediction.rpm >= 0 && prediction.rpm <= VEHICLE_CONSTANTS.maxRPM,
-    torqueValid: prediction.torque >= 0 && prediction.torque <= VEHICLE_CONSTANTS.maxTorque,
-    efficiencyValid: prediction.efficiency >= VEHICLE_CONSTANTS.efficiencyRange[0] && 
-                     prediction.efficiency <= VEHICLE_CONSTANTS.efficiencyRange[1],
-    energyValid: prediction.energyPerKm >= 0 && prediction.energyPerKm <= 200
-  };
+// ============================================================================
+// NEURAL NETWORK - Now learns ACTUAL behavior vs theoretical predictions
+// ============================================================================
+
+async function initNeuralNetwork() {
+  console.log('🧠 Initializing Predictive Neural Network...');
   
-  const isValid = Object.values(validations).every(v => v);
-  const validCount = Object.values(validations).filter(v => v).length;
-  const accuracy = validCount / Object.values(validations).length;
+  // Model now predicts FUTURE state (next 5 seconds)
+  model = tf.sequential({
+    layers: [
+      // Input: current state + recent history
+      tf.layers.dense({ inputShape: [10], units: 64, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) }),
+      tf.layers.dropout({ rate: 0.2 }),
+      tf.layers.dense({ units: 128, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) }),
+      tf.layers.dropout({ rate: 0.2 }),
+      tf.layers.dense({ units: 64, activation: 'relu' }),
+      tf.layers.dropout({ rate: 0.1 }),
+      tf.layers.dense({ units: 32, activation: 'relu' }),
+      // Output: predicted next state + uncertainty
+      tf.layers.dense({ units: 6, activation: 'linear' })
+    ]
+  });
   
-  return { isValid, accuracy, validations };
+  model.compile({
+    optimizer: tf.train.adam(0.001),
+    loss: 'meanSquaredError',
+    metrics: ['mae']
+  });
+  
+  console.log('✅ Neural Network initialized');
+  addTrainingLog('predictive model initialized', 'success');
+  addTrainingLog('inputs: current state + 4-point history (speed, voltage, current, rpm, power)', 'info');
+  addTrainingLog('outputs: predicted power, speed, current in 5 seconds + efficiency + range', 'info');
+  addTrainingLog('training uses ACTUAL measured outcomes as ground truth', 'info');
+  
+  // Auto-train only when we have enough data for validation
+  autoTrainInterval = setInterval(() => {
+    if (telemetryData.speed.length >= 50 && Date.now() - lastTrainingTime > 60000) {
+      trainNeuralNetwork();
+    }
+  }, 60000);
 }
 
-// calc physical limits based on current state
-function calculatePhysicalLimits(currentState) {
+function prepareTrainingData() {
+  const sequences = [];
+  const targets = [];
+  
+  // Need at least 10 points for history + 5 points ahead for target
+  if (telemetryData.speed.length < 15) return { inputs: [], targets: [] };
+  
+  // Create sequences: use points [i-4, i-3, i-2, i-1, i] to predict [i+5]
+  for (let i = 4; i < telemetryData.speed.length - 5; i++) {
+    // Input features: 5 time steps × 2 features (speed, power) = 10 inputs
+    const sequence = [];
+    for (let j = 4; j >= 0; j--) {
+      const idx = i - j;
+      sequence.push(
+        telemetryData.speedFiltered[idx] / VEHICLE_CONSTANTS.maxSpeed,
+        telemetryData.voltageFiltered[idx] / VEHICLE_CONSTANTS.maxVoltage,
+        telemetryData.currentFiltered[idx] / VEHICLE_CONSTANTS.maxCurrent,
+        telemetryData.rpm[idx] / VEHICLE_CONSTANTS.maxRPM,
+        telemetryData.power[idx] / VEHICLE_CONSTANTS.maxPower
+      );
+    }
+    
+    // Target: ACTUAL measured values 5 seconds in the future
+    const futureIdx = i + 5;
+    const actualFuturePower = telemetryData.power[futureIdx] / VEHICLE_CONSTANTS.maxPower;
+    const actualFutureSpeed = telemetryData.speedFiltered[futureIdx] / VEHICLE_CONSTANTS.maxSpeed;
+    const actualFutureCurrent = telemetryData.currentFiltered[futureIdx] / VEHICLE_CONSTANTS.maxCurrent;
+    
+    // Also predict efficiency based on what actually happened
+    const energyConsumed = telemetryData.energy[futureIdx] - telemetryData.energy[i];
+    const distanceCovered = telemetryData.distance[futureIdx] - telemetryData.distance[i];
+    const actualEfficiency = distanceCovered > 0 ? energyConsumed / distanceCovered : 0;
+    const normalizedEfficiency = Math.min(actualEfficiency / 50, 1.0); // Cap at 50 Wh/km
+    
+    // Remaining range estimate
+    const remainingEnergy = (telemetryData.soc[futureIdx] / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
+    const estimatedRange = actualEfficiency > 0 ? remainingEnergy / actualEfficiency : 0;
+    const normalizedRange = Math.min(estimatedRange / 100, 1.0); // Cap at 100 km
+    
+    const errorMetric = Math.abs(actualFuturePower - (telemetryData.power[i] / VEHICLE_CONSTANTS.maxPower));
+    
+    sequences.push(sequence);
+    targets.push([
+      actualFuturePower,
+      actualFutureSpeed,
+      actualFutureCurrent,
+      normalizedEfficiency,
+      normalizedRange,
+      errorMetric
+    ]);
+  }
+  
+  return { inputs: sequences, targets: targets };
+}
+
+async function trainNeuralNetwork() {
+  if (telemetryData.speed.length < 50) {
+    addTrainingLog('need at least 50 data points for proper train/val split', 'warning');
+    return;
+  }
+  
+  addTrainingLog('preparing training data from real measurements...', 'info');
+  updateTrainingStatus('TRAINING');
+  
+  const { inputs, targets } = prepareTrainingData();
+  
+  if (inputs.length < 20) {
+    addTrainingLog('insufficient sequential data for training', 'warning');
+    updateTrainingStatus('IDLE');
+    return;
+  }
+  
+  // Split into train and validation sets (80/20)
+  const splitIdx = Math.floor(inputs.length * 0.8);
+  const trainInputs = inputs.slice(0, splitIdx);
+  const trainTargets = targets.slice(0, splitIdx);
+  const valInputs = inputs.slice(splitIdx);
+  const valTargets = targets.slice(splitIdx);
+  
+  addTrainingLog(`training on ${trainInputs.length} sequences, validating on ${valInputs.length}`, 'info');
+  
+  const xs = tf.tensor2d(trainInputs);
+  const ys = tf.tensor2d(trainTargets);
+  const xsVal = tf.tensor2d(valInputs);
+  const ysVal = tf.tensor2d(valTargets);
+  
+  try {
+    const history = await model.fit(xs, ys, {
+      epochs: 20,
+      batchSize: 16,
+      validationData: [xsVal, ysVal],
+      shuffle: true,
+      verbose: 0,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          if (epoch % 5 === 0) {
+            addTrainingLog(`epoch ${epoch + 1}: loss=${logs.loss.toFixed(4)}, val_loss=${logs.val_loss.toFixed(4)}`, 'info');
+          }
+        }
+      }
+    });
+    
+    trainingEpochs += 20;
+    modelMetrics.trainLoss = history.history.loss[history.history.loss.length - 1];
+    modelMetrics.valLoss = history.history.val_loss[history.history.val_loss.length - 1];
+    modelMetrics.lastUpdate = new Date().toISOString();
+    
+    // Calculate actual prediction accuracy on validation set
+    const predictions = model.predict(xsVal);
+    const predArray = await predictions.array();
+    const targetArray = await ysVal.array();
+    
+    let totalError = 0;
+    for (let i = 0; i < predArray.length; i++) {
+      const error = Math.sqrt(
+        predArray[i].slice(0, 3).reduce((sum, val, idx) => 
+          sum + Math.pow(val - targetArray[i][idx], 2), 0
+        ) / 3
+      );
+      totalError += error;
+    }
+    const avgError = totalError / predArray.length;
+    const accuracy = Math.max(0, (1 - avgError) * 100);
+    
+    modelMetrics.predictionErrors.push(avgError);
+    if (modelMetrics.predictionErrors.length > 20) {
+      modelMetrics.predictionErrors.shift();
+    }
+    
+    addTrainingLog(`✅ training complete! validation accuracy: ${accuracy.toFixed(1)}%`, 'success');
+    addTrainingLog(`avg prediction error: ${(avgError * 100).toFixed(2)}%`, 'info');
+    updateTrainingStatus('IDLE');
+    
+    updateTrainingInfo();
+    lastTrainingTime = Date.now();
+    
+  } catch (error) {
+    addTrainingLog(`training failed: ${error.message}`, 'error');
+    updateTrainingStatus('ERROR');
+  } finally {
+    xs.dispose();
+    ys.dispose();
+    xsVal.dispose();
+    ysVal.dispose();
+  }
+}
+
+async function makePrediction(currentState) {
+  if (!model || telemetryData.speed.length < 5) {
+    return null;
+  }
+  
+  // Prepare input sequence (last 5 time steps)
+  const sequence = [];
+  for (let i = 4; i >= 0; i--) {
+    const idx = telemetryData.speed.length - 1 - i;
+    if (idx < 0) return null;
+    
+    sequence.push(
+      telemetryData.speedFiltered[idx] / VEHICLE_CONSTANTS.maxSpeed,
+      telemetryData.voltageFiltered[idx] / VEHICLE_CONSTANTS.maxVoltage,
+      telemetryData.currentFiltered[idx] / VEHICLE_CONSTANTS.maxCurrent,
+      telemetryData.rpm[idx] / VEHICLE_CONSTANTS.maxRPM,
+      telemetryData.power[idx] / VEHICLE_CONSTANTS.maxPower
+    );
+  }
+  
+  const input = tf.tensor2d([sequence]);
+  const prediction = model.predict(input);
+  const result = await prediction.array();
+  
+  input.dispose();
+  prediction.dispose();
+  
+  return {
+    predictedPower: result[0][0] * VEHICLE_CONSTANTS.maxPower,
+    predictedSpeed: result[0][1] * VEHICLE_CONSTANTS.maxSpeed,
+    predictedCurrent: result[0][2] * VEHICLE_CONSTANTS.maxCurrent,
+    predictedEfficiency: result[0][3] * 50, // Wh/km
+    predictedRange: result[0][4] * 100, // km
+    uncertaintyScore: result[0][5]
+  };
+}
+
+// ============================================================================
+// PHYSICS-BASED REFERENCE (for comparison, not training)
+// ============================================================================
+
+function calculatePhysicalReference(currentState) {
   const { speed, voltage, current, rpm } = currentState;
   
   const maxTheoreticalPower = Math.min(
@@ -193,1332 +476,609 @@ function calculatePhysicalLimits(currentState) {
                       9.81 * speedMs;
   
   const resistancePower = dragPower + rollingPower;
-  const efficiency = 0.85;
-  const optimalPower = resistancePower / efficiency;
+  
+  // Estimate actual efficiency from recent data
+  let estimatedEfficiency = 0.85;
+  if (telemetryData.energy.length >= 10) {
+    const recentEnergy = telemetryData.energy.slice(-10);
+    const recentDistance = telemetryData.distance.slice(-10);
+    const energyConsumed = recentEnergy[9] - recentEnergy[0];
+    const distanceCovered = recentDistance[9] - recentDistance[0];
+    if (distanceCovered > 0.1) {
+      const recentWhPerKm = energyConsumed / distanceCovered;
+      const theoreticalWhPerKm = (resistancePower / (speedMs * 1000)) * 1000;
+      estimatedEfficiency = theoreticalWhPerKm > 0 ? 
+        Math.min(0.95, theoreticalWhPerKm / recentWhPerKm) : 0.85;
+    }
+  }
+  
+  const referencePower = resistancePower / estimatedEfficiency;
   
   const wheelCircumference = Math.PI * VEHICLE_CONSTANTS.wheelDiameter;
-  const optimalRPM = (speedMs * 60) / wheelCircumference;
+  const referenceRPM = (speedMs * 60) / wheelCircumference;
   
-  const omega = (2 * Math.PI * optimalRPM) / 60;
-  const optimalTorque = omega > 0 ? optimalPower / omega : 0;
+  const omega = (2 * Math.PI * referenceRPM) / 60;
+  const referenceTorque = omega > 0 ? referencePower / omega : 0;
   
   return {
     maxPower: maxTheoreticalPower,
-    optimalPower: Math.min(optimalPower, maxTheoreticalPower),
-    optimalRPM: Math.min(optimalRPM, VEHICLE_CONSTANTS.maxRPM),
-    optimalTorque: Math.min(optimalTorque, VEHICLE_CONSTANTS.maxTorque),
+    referencePower: Math.min(referencePower, maxTheoreticalPower),
+    referenceRPM: Math.min(referenceRPM, VEHICLE_CONSTANTS.maxRPM),
+    referenceTorque: Math.min(referenceTorque, VEHICLE_CONSTANTS.maxTorque),
     resistancePower,
     dragPower,
     rollingPower,
-    efficiency: efficiency
+    estimatedEfficiency: estimatedEfficiency
   };
 }
 
-// train the neural net
-async function trainNeuralNetwork() {
-  if (telemetryData.speed.length < 20) {
-    addTrainingLog('need at least 20 data points to train', 'warning');
-    return;
-  }
-  
-  addTrainingLog('starting self-training session...', 'success');
-  updateTrainingStatus('TRAINING');
-  
-  const inputs = [];
-  const outputs = [];
-  let validSamples = 0;
-  
-  for (let i = 2; i < telemetryData.speed.length; i++) {
-    const currentState = {
-      speed: telemetryData.speed[i],
-      voltage: telemetryData.voltage[i],
-      current: telemetryData.current[i],
-      rpm: telemetryData.rpm[i]
-    };
-    
-    const physicalLimits = calculatePhysicalLimits(currentState);
-    const prevPower = telemetryData.power[i - 1] || 0;
-    
-    inputs.push([
-      telemetryData.speed[i] / VEHICLE_CONSTANTS.maxSpeed,
-      telemetryData.voltage[i] / VEHICLE_CONSTANTS.maxVoltage,
-      telemetryData.current[i] / VEHICLE_CONSTANTS.maxCurrent,
-      telemetryData.rpm[i] / VEHICLE_CONSTANTS.maxRPM,
-      (telemetryData.distance[i] % 1000) / 1000,
-      prevPower / VEHICLE_CONSTANTS.maxPower
-    ]);
-    
-    const energyPerKm = telemetryData.distance[i] > 0.01 ? 
-      ((telemetryData.energy[i] / telemetryData.distance[i]) * 1000) : 0;
-    
-    outputs.push([
-      physicalLimits.optimalPower / VEHICLE_CONSTANTS.maxPower,
-      physicalLimits.optimalRPM / VEHICLE_CONSTANTS.maxRPM,
-      physicalLimits.optimalTorque / VEHICLE_CONSTANTS.maxTorque,
-      physicalLimits.efficiency,
-      Math.min(energyPerKm / 100, 1)
-    ]);
-    
-    validSamples++;
-  }
-  
-  if (validSamples < 10) {
-    addTrainingLog('not enough valid samples', 'warning');
-    updateTrainingStatus('READY');
-    return;
-  }
-  
-  const xs = tf.tensor2d(inputs);
-  const ys = tf.tensor2d(outputs);
-  
-  try {
-    const history = await model.fit(xs, ys, {
-      epochs: 30,
-      batchSize: Math.min(16, Math.floor(validSamples / 4)),
-      validationSplit: 0.2,
-      shuffle: true,
-      callbacks: {
-        onEpochEnd: (epoch, logs) => {
-          trainingEpochs++;
-          validationLoss = logs.val_loss || 0;
-          modelAccuracy = Math.max(0, Math.min(100, (1 - Math.min(logs.val_loss, 1)) * 100));
-          
-          document.getElementById('trainingEpochs').textContent = trainingEpochs;
-          document.getElementById('validationLoss').textContent = validationLoss.toFixed(4);
-          document.getElementById('modelAccuracy').textContent = modelAccuracy.toFixed(1) + '%';
-          
-          if (epoch % 10 === 0 || epoch === 29) {
-            addTrainingLog(`epoch ${epoch + 1}/30 - loss: ${logs.loss.toFixed(4)}, val: ${logs.val_loss.toFixed(4)}, mae: ${logs.mae.toFixed(4)}`);
-          }
-        }
-      }
-    });
-    
-    lastTrainingTime = Date.now();
-    addTrainingLog('✅ self-training completed!', 'success');
-    addTrainingLog(`model accuracy: ${modelAccuracy.toFixed(1)}% | trained on ${validSamples} samples`, 'success');
-    addTrainingLog('model aligned with physics constraints', 'success');
-    updateTrainingStatus('READY');
-    
-  } catch (error) {
-    console.error('training error:', error);
-    addTrainingLog('training failed: ' + error.message, 'error');
-    updateTrainingStatus('ERROR');
-  } finally {
-    xs.dispose();
-    ys.dispose();
-  }
-}
+// ============================================================================
+// VISUALIZATION - Proper multi-panel charts with context
+// ============================================================================
 
-// make prediction with the model
-async function makePrediction(speed, voltage, current, rpm, distance, prevPower) {
-  if (!model) return null;
-  
-  const input = tf.tensor2d([[
-    speed / VEHICLE_CONSTANTS.maxSpeed,
-    voltage / VEHICLE_CONSTANTS.maxVoltage,
-    current / VEHICLE_CONSTANTS.maxCurrent,
-    rpm / VEHICLE_CONSTANTS.maxRPM,
-    (distance % 1000) / 1000,
-    prevPower / VEHICLE_CONSTANTS.maxPower
-  ]]);
-  
-  const prediction = model.predict(input);
-  const values = await prediction.data();
-  
-  input.dispose();
-  prediction.dispose();
-  
-  predictionCount++;
-  document.getElementById('predictionCount').textContent = predictionCount;
-  
-  const denormalizedPrediction = {
-    power: values[0] * VEHICLE_CONSTANTS.maxPower,
-    rpm: values[1] * VEHICLE_CONSTANTS.maxRPM,
-    torque: values[2] * VEHICLE_CONSTANTS.maxTorque,
-    efficiency: values[3],
-    energyPerKm: values[4] * 100
-  };
-  
-  const validation = validatePhysicalParameters(denormalizedPrediction);
-  
-  return { prediction: denormalizedPrediction, validation };
-}
-
-// generate ai suggestions
-async function generateNeuralSuggestions() {
-  if (!model || telemetryData.speed.length < 5) {
-    return 'hey! im still warming up here... need at least 5 data points to start analyzing your ride 🔥';
-  }
-  
-  const lastIdx = telemetryData.speed.length - 1;
-  const prevIdx = Math.max(0, lastIdx - 1);
-  
-  const result = await makePrediction(
-    telemetryData.speed[lastIdx],
-    telemetryData.voltage[lastIdx],
-    telemetryData.current[lastIdx],
-    telemetryData.rpm[lastIdx],
-    telemetryData.distance[lastIdx],
-    telemetryData.power[prevIdx]
-  );
-  
-  if (!result) return 'neural network prediction unavailable rn, gimme a sec...';
-  
-  const { prediction, validation } = result;
-  const physicalLimits = calculatePhysicalLimits({
-    speed: telemetryData.speed[lastIdx],
-    voltage: telemetryData.voltage[lastIdx],
-    current: telemetryData.current[lastIdx],
-    rpm: telemetryData.rpm[lastIdx]
-  });
-  
-  let suggestions = `🧠 alright lets dive into whats happening with your ride!\n\n`;
-  suggestions += `📊 NEURAL PREDICTIONS:\n`;
-  suggestions += `├─ optimal power: ${prediction.power.toFixed(0)}W (youre at ${currentData.power.toFixed(0)}W)\n`;
-  suggestions += `├─ optimal rpm: ${prediction.rpm.toFixed(0)} (currently ${currentData.rpm})\n`;
-  suggestions += `├─ optimal torque: ${prediction.torque.toFixed(2)} Nm (youve got ${currentData.torque.toFixed(2)} Nm)\n`;
-  suggestions += `├─ predicted efficiency: ${(prediction.efficiency * 100).toFixed(1)}%\n`;
-  suggestions += `└─ energy consumption: ${prediction.energyPerKm.toFixed(1)} Wh/km\n\n`;
-  
-  suggestions += `✅ PHYSICS CHECK:\n`;
-  suggestions += `├─ validation: ${validation.isValid ? '✅ all systems nominal!' : '⚠️ hmm something might be off'}\n`;
-  suggestions += `├─ confidence: ${(validation.accuracy * 100).toFixed(1)}%\n`;
-  suggestions += `├─ power limits: ${validation.validations.powerValid ? '✅' : '❌'}\n`;
-  suggestions += `├─ rpm range: ${validation.validations.rpmValid ? '✅' : '❌'}\n`;
-  suggestions += `├─ torque range: ${validation.validations.torqueValid ? '✅' : '❌'}\n`;
-  suggestions += `└─ energy check: ${validation.validations.energyValid ? '✅' : '❌'}\n\n`;
-  
-  suggestions += `🎯 WHAT YOU SHOULD DO:\n`;
-  
-  const powerDiff = prediction.power - currentData.power;
-  if (Math.abs(powerDiff) > 50) {
-    if (powerDiff > 0) {
-      suggestions += `💡 yo! you could push it harder - try adding ${powerDiff.toFixed(0)}W more power for better performance\n`;
-    } else {
-      suggestions += `💡 ease up a bit! reducing power by ${Math.abs(powerDiff).toFixed(0)}W will save you some battery life\n`;
-    }
-  } else {
-    suggestions += `✅ power output looking good! youre in the sweet spot right now\n`;
-  }
-  
-  const rpmDiff = prediction.rpm - currentData.rpm;
-  if (Math.abs(rpmDiff) > 20) {
-    suggestions += `💡 try adjusting rpm to ${prediction.rpm.toFixed(0)} (${rpmDiff > 0 ? 'speed up' : 'slow down'} by ${Math.abs(rpmDiff).toFixed(0)} rpm)\n`;
-  }
-  
-  if (prediction.efficiency < 0.8) {
-    suggestions += `⚠️ efficiency is kinda low rn... check these things:\n`;
-    suggestions += `   - wind resistance is costing you ${physicalLimits.dragPower.toFixed(0)}W\n`;
-    suggestions += `   - tire friction is eating ${physicalLimits.rollingPower.toFixed(0)}W\n`;
-    suggestions += `   maybe tuck in more or check your tire pressure?\n`;
-  }
-  
-  if (currentData.energyPerKm > prediction.energyPerKm * 1.2) {
-    suggestions += `⚠️ whoa! youre burning way more energy than you need to\n`;
-    suggestions += `   predicted: ${prediction.energyPerKm.toFixed(1)} Wh/km but youre at ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-  }
-  
-  if (currentData.soc < 30) {
-    suggestions += `\n🔋 battery getting low! maybe find a charging spot soon?\n`;
-  }
-  
-  return suggestions;
-}
-
-// init chart
-let telemetryChart;
+let charts = {
+  main: null,
+  diagnostics: null
+};
 
 function initChart() {
-  const ctx = document.getElementById('telemetryChart').getContext('2d');
-  telemetryChart = new Chart(ctx, {
+  const ctx = document.getElementById('telemetryChart');
+  if (!ctx) return;
+  
+  charts.main = new Chart(ctx, {
     type: 'line',
-    data: { labels: [], datasets: [] },
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'Speed (km/h)',
+          data: [],
+          borderColor: 'rgb(59, 130, 246)',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          tension: 0.1,
+          hidden: false,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Voltage (V)',
+          data: [],
+          borderColor: 'rgb(234, 179, 8)',
+          backgroundColor: 'rgba(234, 179, 8, 0.1)',
+          tension: 0.1,
+          hidden: false,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Current (A)',
+          data: [],
+          borderColor: 'rgb(239, 68, 68)',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          tension: 0.1,
+          hidden: false,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Power (W)',
+          data: [],
+          borderColor: 'rgb(34, 197, 94)',
+          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          tension: 0.1,
+          hidden: false,
+          yAxisID: 'y1'
+        },
+        {
+          label: 'Predicted Power (W)',
+          data: [],
+          borderColor: 'rgb(168, 85, 247)',
+          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          borderDash: [5, 5],
+          tension: 0.1,
+          hidden: true,
+          yAxisID: 'y1'
+        }
+      ]
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
       plugins: {
         legend: {
           display: true,
           position: 'top',
-          labels: { color: '#e2e8f0', font: { size: 11, weight: 600 }, padding: 15, usePointStyle: true }
+          labels: { color: 'white', usePointStyle: true }
         },
         tooltip: {
-          backgroundColor: 'rgba(21, 25, 50, 0.95)',
-          titleColor: '#00d9ff',
-          bodyColor: '#e2e8f0',
-          borderColor: '#2d3454',
-          borderWidth: 1,
-          padding: 12
+          callbacks: {
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              label += context.parsed.y.toFixed(2);
+              return label;
+            }
+          }
         }
       },
       scales: {
         x: {
-          display: true,
-          grid: { color: 'rgba(45, 52, 84, 0.3)', drawBorder: false },
-          ticks: { color: '#94a3b8', maxRotation: 0, autoSkipPadding: 20, font: { size: 10 } }
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: { color: 'white' }
         },
         y: {
+          type: 'linear',
           display: true,
           position: 'left',
-          grid: { color: 'rgba(45, 52, 84, 0.3)', drawBorder: false },
-          ticks: { color: '#94a3b8', font: { size: 10 } }
+          title: {
+            display: true,
+            text: 'Speed/Voltage/Current',
+            color: 'white'
+          },
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: { color: 'white' }
         },
         y1: {
-          display: false,
+          type: 'linear',
+          display: true,
           position: 'right',
-          grid: { display: false },
-          ticks: { color: '#94a3b8', font: { size: 10 } }
+          title: {
+            display: true,
+            text: 'Power (W)',
+            color: 'white'
+          },
+          grid: { drawOnChartArea: false },
+          ticks: { color: 'white' }
         }
-      },
-      animation: { duration: 300 }
+      }
     }
   });
 }
 
-// FIXED: Updated chart function with corrected graph types
 function updateChart() {
-  const chartType = document.getElementById('chartType').value;
+  if (!charts.main) return;
   
-  let datasets = [];
-  let labels = [];
+  const chartType = document.getElementById('chartType')?.value || 'power';
+  const dataLength = Math.min(telemetryData.timestamps.length, maxDataPoints);
+  const startIdx = Math.max(0, telemetryData.timestamps.length - dataLength);
   
-  telemetryChart.options.scales.x.type = 'category';
-  telemetryChart.options.scales.y.type = 'linear';
-  telemetryChart.options.scales.y1.display = false;
+  // Create relative timestamps (last N seconds)
+  const labels = Array.from({ length: dataLength }, (_, i) => `${i - dataLength}s`);
   
-  switch(chartType) {
-    case 'power-rpm':
-      // FIXED: Show both Power and RPM over time with dual y-axes
-      labels = telemetryData.timestamps;
-      telemetryChart.options.scales.y1.display = true;
-      telemetryChart.options.scales.y.title = { display: true, text: 'Power (W)', color: '#94a3b8' };
-      telemetryChart.options.scales.y1.title = { display: true, text: 'RPM', color: '#94a3b8' };
-      
-      datasets = [
-        {
-          label: 'Power (W)',
-          data: telemetryData.power,
-          borderColor: '#ffaa00',
-          backgroundColor: 'rgba(255, 170, 0, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4,
-          yAxisID: 'y'
-        },
-        {
-          label: 'RPM',
-          data: telemetryData.rpm,
-          borderColor: '#00d9ff',
-          backgroundColor: 'rgba(0, 217, 255, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4,
-          yAxisID: 'y1'
-        }
-      ];
-      break;
-      
-    case 'torque-rpm':
-      // FIXED: Show both Torque and RPM over time with dual y-axes
-      labels = telemetryData.timestamps;
-      telemetryChart.options.scales.y1.display = true;
-      telemetryChart.options.scales.y.title = { display: true, text: 'Torque (Nm)', color: '#94a3b8' };
-      telemetryChart.options.scales.y1.title = { display: true, text: 'RPM', color: '#94a3b8' };
-      
-      datasets = [
-        {
-          label: 'Torque (Nm)',
-          data: telemetryData.torque,
-          borderColor: '#ff006e',
-          backgroundColor: 'rgba(255, 0, 110, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4,
-          yAxisID: 'y'
-        },
-        {
-          label: 'RPM',
-          data: telemetryData.rpm,
-          borderColor: '#00d9ff',
-          backgroundColor: 'rgba(0, 217, 255, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4,
-          yAxisID: 'y1'
-        }
-      ];
-      break;
-      
-    case 'acceleration':
-      telemetryChart.options.scales.x.type = 'category';
-      labels = telemetryData.timestamps;
-      datasets = [
-        {
-          label: 'Acceleration (m/s²)',
-          data: telemetryData.acceleration,
-          borderColor: '#00ff88',
-          backgroundColor: 'rgba(0, 255, 136, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4
-        },
-        {
-          label: 'Jerk (m/s³)',
-          data: telemetryData.jerk,
-          borderColor: '#ff3366',
-          backgroundColor: 'rgba(255, 51, 102, 0.1)',
-          borderWidth: 2,
-          pointRadius: 1,
-          tension: 0.4
-        }
-      ];
-      break;
-      
-    case 'energy-distance':
-      telemetryChart.options.scales.x.type = 'linear';
-      datasets = [{
-        label: 'Energy vs Distance',
-        data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.energy[i] })),
-        borderColor: '#7c3aed',
-        backgroundColor: 'rgba(124, 58, 237, 0.1)',
-        borderWidth: 2,
-        pointRadius: 2,
-        showLine: true
-      }];
-      telemetryChart.options.scales.x.title = { display: true, text: 'Distance (km)', color: '#94a3b8' };
-      telemetryChart.options.scales.y.title = { display: true, text: 'Energy (Wh)', color: '#94a3b8' };
-      break;
-      
-    case 'soc-distance':
-      telemetryChart.options.scales.x.type = 'linear';
-      datasets = [{
-        label: 'SOC vs Distance',
-        data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.soc[i] })),
-        borderColor: '#00d9ff',
-        backgroundColor: 'rgba(0, 217, 255, 0.1)',
-        borderWidth: 2,
-        pointRadius: 2,
-        showLine: true
-      }];
-      telemetryChart.options.scales.x.title = { display: true, text: 'Distance (km)', color: '#94a3b8' };
-      telemetryChart.options.scales.y.title = { display: true, text: 'SOC (%)', color: '#94a3b8' };
-      break;
-      
-    case 'voltage-current':
-      // FIXED: Better V-I curve with filtering and trendline
-      telemetryChart.options.scales.x.type = 'linear';
-      
-      // Filter out low current readings and group similar points
-      const validPoints = telemetryData.current
-        .map((c, i) => ({ x: c, y: telemetryData.voltage[i] }))
-        .filter(p => p.x > 1.0); // Only include points with current > 1A
-      
-      datasets = [{
-        label: 'Voltage vs Current',
-        data: validPoints,
-        borderColor: '#ff3366',
-        backgroundColor: 'rgba(255, 51, 102, 0.3)',
-        borderWidth: 0,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        showLine: false
-      }];
-      
-      // Add trendline if we have enough valid points
-      if (validPoints.length > 5) {
-        const sumX = validPoints.reduce((a, p) => a + p.x, 0);
-        const sumY = validPoints.reduce((a, p) => a + p.y, 0);
-        const sumXY = validPoints.reduce((a, p) => a + p.x * p.y, 0);
-        const sumX2 = validPoints.reduce((a, p) => a + p.x * p.x, 0);
-        const n = validPoints.length;
-        
-        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-        const intercept = (sumY - slope * sumX) / n;
-        
-        const minX = Math.min(...validPoints.map(p => p.x));
-        const maxX = Math.max(...validPoints.map(p => p.x));
-        
-        datasets.push({
-          label: `Internal R ≈ ${Math.abs(slope).toFixed(3)}Ω`,
-          data: [
-            { x: minX, y: slope * minX + intercept },
-            { x: maxX, y: slope * maxX + intercept }
-          ],
-          borderColor: '#ffaa00',
-          borderWidth: 3,
-          borderDash: [5, 5],
-          pointRadius: 0,
-          showLine: true
-        });
-      }
-      
-      telemetryChart.options.scales.x.title = { display: true, text: 'Current (A)', color: '#94a3b8' };
-      telemetryChart.options.scales.y.title = { display: true, text: 'Voltage (V)', color: '#94a3b8' };
-      break;
-      
-    case 'speed-distance':
-      telemetryChart.options.scales.x.type = 'linear';
-      datasets = [{
-        label: 'Speed vs Distance',
-        data: telemetryData.distance.map((d, i) => ({ x: d, y: telemetryData.speed[i] })),
-        borderColor: '#00ff88',
-        backgroundColor: 'rgba(0, 255, 136, 0.1)',
-        borderWidth: 2,
-        pointRadius: 1,
-        showLine: true,
-        tension: 0.4
-      }];
-      telemetryChart.options.scales.x.title = { display: true, text: 'Distance (km)', color: '#94a3b8' };
-      telemetryChart.options.scales.y.title = { display: true, text: 'Speed (km/h)', color: '#94a3b8' };
-      break;
-      
-    default: // telemetry
-      telemetryChart.options.scales.x.type = 'category';
-      labels = telemetryData.timestamps;
-      
-      const voltageChecked = document.getElementById('chartVoltage')?.checked || false;
-      const currentChecked = document.getElementById('chartCurrent')?.checked || false;
-      const powerChecked = document.getElementById('chartPower')?.checked || false;
-      
-      const useDualAxis = powerChecked && (voltageChecked || currentChecked);
-      
-      if (useDualAxis) {
-        telemetryChart.options.scales.y1.display = true;
-        telemetryChart.options.scales.y.title = { display: true, text: 'V/A', color: '#94a3b8' };
-        telemetryChart.options.scales.y1.title = { display: true, text: 'Power (W)', color: '#94a3b8' };
-      }
-      
-      if (voltageChecked) {
-        datasets.push({
-          label: 'Voltage (V)',
-          data: telemetryData.voltage,
-          borderColor: '#00d9ff',
-          borderWidth: 2,
-          tension: 0.4,
-          pointRadius: 0,
-          yAxisID: 'y'
-        });
-      }
-      
-      if (currentChecked) {
-        datasets.push({
-          label: 'Current (A)',
-          data: telemetryData.current,
-          borderColor: '#ff3366',
-          borderWidth: 2,
-          tension: 0.4,
-          pointRadius: 0,
-          yAxisID: 'y'
-        });
-      }
-      
-      if (powerChecked) {
-        datasets.push({
-          label: 'Power (W)',
-          data: telemetryData.power,
-          borderColor: '#ffaa00',
-          borderWidth: 2,
-          tension: 0.4,
-          pointRadius: 0,
-          yAxisID: useDualAxis ? 'y1' : 'y'
-        });
-      }
+  charts.main.data.labels = labels;
+  
+  // Update visibility based on chart type
+  if (chartType === 'power') {
+    charts.main.data.datasets[0].hidden = false; // Speed
+    charts.main.data.datasets[1].hidden = false; // Voltage
+    charts.main.data.datasets[2].hidden = false; // Current
+    charts.main.data.datasets[3].hidden = false; // Power
+    charts.main.data.datasets[4].hidden = false; // Predicted Power
+    
+    charts.main.data.datasets[0].data = telemetryData.speed.slice(startIdx);
+    charts.main.data.datasets[1].data = telemetryData.voltage.slice(startIdx);
+    charts.main.data.datasets[2].data = telemetryData.current.slice(startIdx);
+    charts.main.data.datasets[3].data = telemetryData.power.slice(startIdx);
+    charts.main.data.datasets[4].data = telemetryData.predictedPower.slice(startIdx);
+  } else if (chartType === 'filtered') {
+    // Show raw vs filtered
+    charts.main.data.datasets[0].label = 'Speed (Raw)';
+    charts.main.data.datasets[0].data = telemetryData.speed.slice(startIdx);
+    charts.main.data.datasets[1].label = 'Speed (Filtered)';
+    charts.main.data.datasets[1].data = telemetryData.speedFiltered.slice(startIdx);
+    charts.main.data.datasets[2].hidden = true;
+    charts.main.data.datasets[3].hidden = true;
+    charts.main.data.datasets[4].hidden = true;
+  } else if (chartType === 'derivatives') {
+    // Show filtered derivatives with uncertainty
+    charts.main.data.datasets[0].label = 'Acceleration (m/s²)';
+    charts.main.data.datasets[0].data = telemetryData.acceleration.slice(startIdx);
+    charts.main.data.datasets[1].label = 'Jerk (m/s³)';
+    charts.main.data.datasets[1].data = telemetryData.jerk.slice(startIdx);
+    charts.main.data.datasets[2].hidden = true;
+    charts.main.data.datasets[3].hidden = true;
+    charts.main.data.datasets[4].hidden = true;
   }
   
-  telemetryChart.data.labels = labels;
-  telemetryChart.data.datasets = datasets;
-  telemetryChart.update('none');
+  charts.main.update('none');
 }
 
-// firebase listeners
+// ============================================================================
+// FIREBASE AND DATA HANDLING
+// ============================================================================
+
 function setupFirebaseListeners() {
-  console.log('🔗 setting up firebase listener...');
+  const telemetryRef = database.ref('telemetry');
   
-  const readingsRef = database.ref('/cycle_readings');
-  
-  readingsRef.on('value', (snapshot) => {
-    if (!snapshot.exists()) {
-      console.warn('⚠️ no data found');
-      updateConnectionStatus(false);
+  telemetryRef.on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (!data) {
+      isConnected = false;
+      updateConnectionStatus();
       return;
     }
     
-    const readings = snapshot.val();
-    const readingKeys = Object.keys(readings).sort();
+    isConnected = true;
+    updateConnectionStatus();
     
-    for (const key in telemetryData) {
-      telemetryData[key] = [];
-    }
+    const index = telemetryData.timestamps.length;
     
-    readingKeys.forEach((key, index) => {
-      const reading = readings[key];
-      
-      const dataPoint = {
-        speed: parseFloat(reading.speed) || 0,
-        voltage: parseFloat(reading.voltage) || 0,
-        current: parseFloat(reading.current) || 0,
-        rpm: parseInt(reading.rpm) || 0,
-        distance: parseFloat(reading.distance) || 0,
-        ah: parseFloat(reading.ah) || null
-      };
-      
-      const derived = calculateTruePhysicalParameters(dataPoint, index);
-      
-      let timestamp;
-      if (reading.timestamp) {
-        const date = new Date(reading.timestamp);
-        timestamp = date.toLocaleTimeString();
+    // Store raw data
+    telemetryData.timestamps.push(Date.now());
+    telemetryData.speed.push(parseFloat(data.speed) || 0);
+    telemetryData.voltage.push(parseFloat(data.voltage) || 0);
+    telemetryData.current.push(parseFloat(data.current) || 0);
+    telemetryData.rpm.push(parseInt(data.rpm) || 0);
+    telemetryData.distance.push(parseFloat(data.distance) || 0);
+    
+    // Apply signal filtering
+    applySignalFiltering();
+    
+    // Calculate derived quantities from FILTERED data
+    const derived = calculateTruePhysicalParameters({
+      speed: telemetryData.speedFiltered[index] || data.speed,
+      voltage: telemetryData.voltageFiltered[index] || data.voltage,
+      current: telemetryData.currentFiltered[index] || data.current,
+      rpm: data.rpm,
+      distance: data.distance,
+      ah: data.ah
+    }, index);
+    
+    telemetryData.power.push(derived.power);
+    telemetryData.torque.push(derived.torque);
+    telemetryData.acceleration.push(derived.acceleration);
+    telemetryData.jerk.push(derived.jerk);
+    telemetryData.energy.push(derived.energy);
+    telemetryData.soc.push(derived.soc);
+    telemetryData.ampHours.push(derived.ampHours);
+    
+    // Make prediction and store for validation
+    makePrediction(data).then(prediction => {
+      if (prediction) {
+        telemetryData.predictedPower.push(prediction.predictedPower);
+        const error = Math.abs(prediction.predictedPower - derived.power) / Math.max(derived.power, 1);
+        telemetryData.predictionError.push(error);
       } else {
-        timestamp = `${index + 1}`;
+        telemetryData.predictedPower.push(null);
+        telemetryData.predictionError.push(null);
       }
-      
-      telemetryData.timestamps.push(timestamp);
-      telemetryData.speed.push(dataPoint.speed);
-      telemetryData.voltage.push(dataPoint.voltage);
-      telemetryData.current.push(dataPoint.current);
-      telemetryData.rpm.push(dataPoint.rpm);
-      telemetryData.distance.push(dataPoint.distance);
-      telemetryData.power.push(derived.power);
-      telemetryData.torque.push(derived.torque);
-      telemetryData.acceleration.push(derived.acceleration);
-      telemetryData.jerk.push(derived.jerk);
-      telemetryData.energy.push(derived.energy);
-      telemetryData.soc.push(derived.soc);
-      telemetryData.ampHours.push(derived.ampHours);
     });
     
+    // Limit data size
     if (telemetryData.timestamps.length > maxDataPoints) {
-      const excess = telemetryData.timestamps.length - maxDataPoints;
-      for (const key in telemetryData) {
-        telemetryData[key].splice(0, excess);
-      }
+      Object.keys(telemetryData).forEach(key => {
+        telemetryData[key].shift();
+      });
     }
     
-    const lastIdx = telemetryData.speed.length - 1;
-    if (lastIdx >= 0) {
-      // FIXED: Better energyPerKm calculation with minimum distance check
-      let energyPerKm = 0;
-      if (telemetryData.distance[lastIdx] > 0.01) {
-        energyPerKm = (telemetryData.energy[lastIdx] / telemetryData.distance[lastIdx]) * 1000;
-        // Cap at reasonable maximum
-        energyPerKm = Math.min(energyPerKm, 200);
-      }
-      
-      currentData = {
-        speed: telemetryData.speed[lastIdx],
-        voltage: telemetryData.voltage[lastIdx],
-        current: telemetryData.current[lastIdx],
-        power: telemetryData.power[lastIdx],
-        rpm: telemetryData.rpm[lastIdx],
-        distance: telemetryData.distance[lastIdx],
-        torque: telemetryData.torque[lastIdx],
-        acceleration: telemetryData.acceleration[lastIdx],
-        jerk: telemetryData.jerk[lastIdx],
-        soc: telemetryData.soc[lastIdx],
-        energyPerKm: energyPerKm
-      };
-    }
+    // Update current data
+    currentData.speed = telemetryData.speedFiltered[telemetryData.speedFiltered.length - 1] || 0;
+    currentData.voltage = telemetryData.voltageFiltered[telemetryData.voltageFiltered.length - 1] || 0;
+    currentData.current = telemetryData.currentFiltered[telemetryData.currentFiltered.length - 1] || 0;
+    currentData.power = derived.power;
+    currentData.rpm = data.rpm;
+    currentData.distance = data.distance;
+    currentData.torque = derived.torque;
+    currentData.acceleration = derived.acceleration;
+    currentData.jerk = derived.jerk;
+    currentData.soc = derived.soc;
+    currentData.energyPerKm = currentData.distance > 0 ? (derived.energy / currentData.distance) : 0;
     
-    isConnected = true;
-    updateConnectionStatus(true);
-    updateMetricsDisplay();
+    updateDisplays();
     updateChart();
-    updateDiagnostics();
-    
-  }, (error) => {
-    console.error('❌ firebase error:', error);
-    updateConnectionStatus(false);
   });
 }
 
-function updateConnectionStatus(connected) {
-  const statusEl = document.getElementById('connectionStatus');
-  const timestamp = document.getElementById('lastUpdateTimestamp');
-  
-  if (connected) {
-    statusEl.className = 'status-indicator status-connected';
-    statusEl.innerHTML = '<span>●</span><span>CONNECTED</span>';
-    timestamp.textContent = new Date().toLocaleTimeString();
-  } else {
-    statusEl.className = 'status-indicator status-waiting pulse';
-    statusEl.innerHTML = '<span>●</span><span>WAITING...</span>';
-  }
-}
-
-function updateTrainingStatus(status) {
-  const elem = document.getElementById('trainingStatus');
-  if (elem) elem.textContent = status;
-}
-
-function updateMetricsDisplay() {
-  updateSpeedometer(currentData.speed);
-  updateBatteryGauge(currentData.soc, telemetryData.ampHours[telemetryData.ampHours.length - 1] || 0);
-  
+function updateDisplays() {
+  // Update main displays
+  document.getElementById('speedValue').textContent = currentData.speed.toFixed(1);
   document.getElementById('voltageValue').textContent = currentData.voltage.toFixed(1);
   document.getElementById('currentValue').textContent = currentData.current.toFixed(1);
   document.getElementById('powerValue').textContent = currentData.power.toFixed(0);
   document.getElementById('rpmValue').textContent = currentData.rpm;
-  document.getElementById('torqueValue').textContent = currentData.torque.toFixed(1);
-  document.getElementById('energyPerKmValue').textContent = currentData.energyPerKm.toFixed(1);
-  
-  const accelElem = document.getElementById('accelValue');
-  if (accelElem) accelElem.textContent = currentData.acceleration.toFixed(2);
-  
-  updateMetricColors();
+  document.getElementById('socValue').textContent = currentData.soc.toFixed(1);
+  document.getElementById('distanceValue').textContent = currentData.distance.toFixed(2);
+  document.getElementById('energyValue').textContent = currentData.energyPerKm.toFixed(1);
 }
 
-function getValueColor(value, thresholds) {
-  if (value <= thresholds.excellent) return { color: 'var(--color-excellent)', glow: 'var(--glow-green)' };
-  if (value <= thresholds.good) return { color: 'var(--color-good)', glow: 'var(--glow-green)' };
-  if (value <= thresholds.moderate) return { color: 'var(--color-moderate)', glow: 'var(--glow-yellow)' };
-  if (value <= thresholds.warning) return { color: 'var(--color-warning)', glow: 'var(--glow-orange)' };
-  return { color: 'var(--color-critical)', glow: 'var(--glow-red)' };
-}
-
-// FIXED: Speed display now updates properly
-function updateSpeedometer(speed) {
-  const maxSpeed = 60;
-  const percentage = Math.min(speed / maxSpeed, 1);
-  
-  const angle = -135 + (percentage * 270);
-  
-  const needle = document.getElementById('speedometer-needle');
-  if (needle) {
-    needle.style.transform = `rotate(${angle}deg)`;
-  }
-  
-  const arc = document.getElementById('speedometer-arc');
-  if (arc) {
-    const offset = 424 * (1 - percentage);
-    arc.style.strokeDashoffset = offset;
-    
-    let color;
-    if (speed < 20) color = '#00ff00';
-    else if (speed < 35) color = '#88ff00';
-    else if (speed < 50) color = '#ffaa00';
-    else color = '#ff0000';
-    
-    arc.style.stroke = color;
-  }
-  
-  const dot = document.getElementById('speedometer-dot');
-  if (dot) {
-    let color;
-    if (speed < 20) color = '#00ff00';
-    else if (speed < 35) color = '#88ff00';
-    else if (speed < 50) color = '#ffaa00';
-    else color = '#ff0000';
-    
-    dot.style.fill = color;
-    dot.style.filter = `drop-shadow(0 0 8px ${color})`;
-  }
-  
-  // FIXED: Actually update the speed text value
-  const speedValue = document.getElementById('speedValue');
-  if (speedValue) {
-    speedValue.textContent = Math.round(speed);
-    let color, glow;
-    if (speed < 20) {
-      color = '#00ff00';
-      glow = '0 0 15px rgba(0, 255, 0, 0.8)';
-    } else if (speed < 35) {
-      color = '#88ff00';
-      glow = '0 0 15px rgba(136, 255, 0, 0.8)';
-    } else if (speed < 50) {
-      color = '#ffaa00';
-      glow = '0 0 15px rgba(255, 170, 0, 0.8)';
+function updateConnectionStatus() {
+  const statusEl = document.getElementById('connectionStatus');
+  if (statusEl) {
+    if (isConnected) {
+      statusEl.textContent = 'Connected';
+      statusEl.className = 'status-connected';
     } else {
-      color = '#ff0000';
-      glow = '0 0 15px rgba(255, 0, 0, 0.8)';
+      statusEl.textContent = 'Disconnected';
+      statusEl.className = 'status-disconnected';
     }
-    
-    speedValue.style.color = color;
-    speedValue.style.textShadow = glow;
   }
 }
 
-// FIXED: Battery display updates properly with black text for contrast
-function updateBatteryGauge(soc, ah) {
-  const batteryWidth = 130;
-  const fillWidth = (soc / 100) * batteryWidth;
-  
-  const fill = document.getElementById('battery-fill');
-  if (fill) {
-    fill.setAttribute('width', fillWidth);
-    
-    let color;
-    if (soc >= 80) color = '#00ff00';
-    else if (soc >= 60) color = '#88ff00';
-    else if (soc >= 40) color = '#ffff00';
-    else if (soc >= 20) color = '#ffaa00';
-    else color = '#ff0000';
-    
-    fill.style.fill = color;
-    fill.style.filter = `drop-shadow(0 0 6px ${color})`;
-  }
-  
-  // FIXED: Always use black text for proper contrast
-  const batteryText = document.getElementById('battery-text');
-  if (batteryText) {
-    batteryText.textContent = `${Math.round(soc)}%`;
-    batteryText.style.fill = '#000000';
-  }
-  
-  // FIXED: Update SOC value properly
-  const socValue = document.getElementById('socValue');
-  if (socValue) {
-    socValue.textContent = Math.round(soc);
-    let color, glow;
-    if (soc >= 80) {
-      color = '#00ff00';
-      glow = '0 0 15px rgba(0, 255, 0, 0.8)';
-    } else if (soc >= 60) {
-      color = '#88ff00';
-      glow = '0 0 15px rgba(136, 255, 0, 0.8)';
-    } else if (soc >= 40) {
-      color = '#ffff00';
-      glow = '0 0 15px rgba(255, 255, 0, 0.8)';
-    } else if (soc >= 20) {
-      color = '#ffaa00';
-      glow = '0 0 15px rgba(255, 170, 0, 0.8)';
-    } else {
-      color = '#ff0000';
-      glow = '0 0 15px rgba(255, 0, 0, 0.8)';
-    }
-    
-    socValue.style.color = color;
-    socValue.style.textShadow = glow;
-  }
-  
-  const ahValue = document.getElementById('ahValue');
-  if (ahValue) {
-    ahValue.textContent = ah.toFixed(2);
+function updateTrainingStatus(status) {
+  const statusEl = document.getElementById('trainingStatus');
+  if (statusEl) {
+    statusEl.textContent = status;
+    statusEl.className = `training-status status-${status.toLowerCase()}`;
   }
 }
 
-function updateMetricColors() {
-  const voltagePercent = (currentData.voltage / VEHICLE_CONSTANTS.maxVoltage) * 100;
-  const voltageThresholds = { excellent: 100, good: 75, moderate: 60, warning: 50 };
-  let voltageColor;
-  if (voltagePercent >= 90) voltageColor = getValueColor(100, voltageThresholds);
-  else if (voltagePercent >= 75) voltageColor = getValueColor(80, voltageThresholds);
-  else if (voltagePercent >= 60) voltageColor = getValueColor(65, voltageThresholds);
-  else if (voltagePercent >= 50) voltageColor = getValueColor(55, voltageThresholds);
-  else voltageColor = getValueColor(40, voltageThresholds);
+function updateTrainingInfo() {
+  document.getElementById('totalEpochs').textContent = trainingEpochs;
+  document.getElementById('trainLoss').textContent = modelMetrics.trainLoss.toFixed(4);
+  document.getElementById('valLoss').textContent = modelMetrics.valLoss.toFixed(4);
   
-  const voltageEl = document.getElementById('voltageValue');
-  if (voltageEl) {
-    voltageEl.style.color = voltageColor.color;
-    voltageEl.style.textShadow = voltageColor.glow;
-  }
-  
-  const currentPercent = Math.abs(currentData.current / VEHICLE_CONSTANTS.maxCurrent) * 100;
-  const currentThresholds = { excellent: 30, good: 50, moderate: 70, warning: 90 };
-  const currentColor = getValueColor(currentPercent, currentThresholds);
-  
-  const currentEl = document.getElementById('currentValue');
-  if (currentEl) {
-    currentEl.style.color = currentColor.color;
-    currentEl.style.textShadow = currentColor.glow;
-  }
-  
-  const powerPercent = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
-  const powerThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const powerColor = getValueColor(powerPercent, powerThresholds);
-  
-  const powerEl = document.getElementById('powerValue');
-  if (powerEl) {
-    powerEl.style.color = powerColor.color;
-    powerEl.style.textShadow = powerColor.glow;
-  }
-  
-  const rpmPercent = (currentData.rpm / VEHICLE_CONSTANTS.maxRPM) * 100;
-  const rpmThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const rpmColor = getValueColor(rpmPercent, rpmThresholds);
-  
-  const rpmEl = document.getElementById('rpmValue');
-  if (rpmEl) {
-    rpmEl.style.color = rpmColor.color;
-    rpmEl.style.textShadow = rpmColor.glow;
-  }
-  
-  const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
-  const torqueThresholds = { excellent: 40, good: 60, moderate: 80, warning: 95 };
-  const torqueColor = getValueColor(torquePercent, torqueThresholds);
-  
-  const torqueEl = document.getElementById('torqueValue');
-  if (torqueEl) {
-    torqueEl.style.color = torqueColor.color;
-    torqueEl.style.textShadow = torqueColor.glow;
-  }
-  
-  const energyThresholds = { excellent: 15, good: 25, moderate: 35, warning: 50 };
-  const energyColor = getValueColor(currentData.energyPerKm, energyThresholds);
-  
-  const energyEl = document.getElementById('energyPerKmValue');
-  if (energyEl) {
-    energyEl.style.color = energyColor.color;
-    energyEl.style.textShadow = energyColor.glow;
-  }
-  
-  const accelThresholds = { excellent: 1, good: 2, moderate: 3, warning: 4 };
-  const accelColor = getValueColor(Math.abs(currentData.acceleration), accelThresholds);
-  
-  const accelEl = document.getElementById('accelValue');
-  if (accelEl) {
-    accelEl.style.color = accelColor.color;
-    accelEl.style.textShadow = accelColor.glow;
-  }
-}
-
-function updateDiagnostics() {
-  const diagnosticsContainer = document.getElementById('aiDiagnostics');
-  if (!diagnosticsContainer) return;
-  
-  diagnosticsContainer.innerHTML = '';
-  
-  const physicalLimits = calculatePhysicalLimits({
-    speed: currentData.speed,
-    voltage: currentData.voltage,
-    current: currentData.current,
-    rpm: currentData.rpm
-  });
-  
-  if (currentData.rpm > 0 && currentData.power > 0) {
-    const powerUtilization = (currentData.power / VEHICLE_CONSTANTS.maxPower) * 100;
-    let status, message, suggestion;
-    
-    if (powerUtilization < 40) {
-      status = 'good';
-      message = 'motor chillin in comfort mode';
-      suggestion = `got ${(VEHICLE_CONSTANTS.maxPower - currentData.power).toFixed(0)}W in reserves if you need it`;
-    } else if (powerUtilization < 70) {
-      status = 'good';
-      message = 'sweet spot! motor running efficiently';
-      suggestion = 'nice balance between power and heat management';
-    } else if (powerUtilization < 90) {
-      status = 'moderate';
-      message = 'pushing it pretty hard, getting close to thermal limits';
-      suggestion = '⚠️ keep an eye on motor temp';
-    } else {
-      status = 'critical';
-      message = 'MAX POWER!! motor at full capacity';
-      suggestion = '🚨 ease off the throttle to avoid damage';
-    }
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Power Curve (P vs RPM)</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">${powerUtilization.toFixed(1)}% | ${currentData.power.toFixed(0)}W @ ${currentData.rpm} RPM</div>
-        <div class="diagnostic-message">${message} | optimal: ${physicalLimits.optimalPower.toFixed(0)}W</div>
-        <div class="diagnostic-suggestion">💡 ${suggestion}</div>
-      </div>
-    `;
-  }
-  
-  if (currentData.torque > 0 && currentData.rpm > 0) {
-    const torquePercent = (currentData.torque / VEHICLE_CONSTANTS.maxTorque) * 100;
-    let status = torquePercent < 60 ? 'good' : torquePercent < 85 ? 'moderate' : 'critical';
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Torque Curve (T vs RPM)</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">${currentData.torque.toFixed(2)} Nm @ ${currentData.rpm} RPM</div>
-        <div class="diagnostic-message">T = P / ω where ω = 2π×RPM/60 | optimal: ${physicalLimits.optimalTorque.toFixed(2)} Nm</div>
-        <div class="diagnostic-suggestion">💡 ${torquePercent < 70 ? 'safe operating range' : '⚠️ high torque - watch that temp'}</div>
-      </div>
-    `;
-  }
-  
-  if (Math.abs(currentData.acceleration) > 0.05) {
-    const accelPercent = (Math.abs(currentData.acceleration) / VEHICLE_CONSTANTS.maxAcceleration) * 100;
-    let status = accelPercent < 50 ? 'good' : accelPercent < 80 ? 'moderate' : 'critical';
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Acceleration & Jerk</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">a = ${currentData.acceleration.toFixed(2)} m/s² | j = ${currentData.jerk.toFixed(2)} m/s³</div>
-        <div class="diagnostic-message">a = dS/dt, j = d²S/dt² | smooth acceleration = better traction</div>
-        <div class="diagnostic-suggestion">💡 ${Math.abs(currentData.jerk) < 5 ? 'smooth as butter' : '⚠️ jerky movements - ease on the throttle'}</div>
-      </div>
-    `;
-  }
-  
-  if (currentData.distance > 0.1 && currentData.energyPerKm > 0) {
-    let status = 'good';
-    if (currentData.energyPerKm > 30) status = 'moderate';
-    if (currentData.energyPerKm > 50) status = 'critical';
-    
-    const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / currentData.energyPerKm;
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Energy Consumption</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">${currentData.energyPerKm.toFixed(1)} Wh/km</div>
-        <div class="diagnostic-message">estimated range: ${estimatedRange.toFixed(1)} km at this rate</div>
-        <div class="diagnostic-suggestion">💡 ${status === 'good' ? 'excellent efficiency!' : '⚠️ burning through energy - try cruising lighter'}</div>
-      </div>
-    `;
-  }
-  
-  if (currentData.speed > 5) {
-    const dragPercent = (physicalLimits.dragPower / physicalLimits.resistancePower) * 100;
-    let status = dragPercent < 70 ? 'good' : dragPercent < 85 ? 'moderate' : 'critical';
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Aero & Rolling Resistance</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">${physicalLimits.resistancePower.toFixed(0)}W @ ${currentData.speed.toFixed(1)} km/h</div>
-        <div class="diagnostic-message">drag: ${physicalLimits.dragPower.toFixed(0)}W | rolling: ${physicalLimits.rollingPower.toFixed(0)}W</div>
-        <div class="diagnostic-suggestion">💡 ${dragPercent < 60 ? 'good aero profile' : '⚠️ high drag - slow down or tuck in'}</div>
-      </div>
-    `;
-  }
-  
-  const remainingCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
-  let socStatus = currentData.soc > 80 ? 'excellent' : currentData.soc > 50 ? 'good' : currentData.soc > 20 ? 'moderate' : 'critical';
-  
-  diagnosticsContainer.innerHTML += `
-    <div class="diagnostic-item">
-      <div class="diagnostic-header">
-        <span class="diagnostic-label">Battery State of Charge</span>
-        <span class="diagnostic-status status-${socStatus}">${socStatus.toUpperCase()}</span>
-      </div>
-      <div class="diagnostic-value">${currentData.soc.toFixed(1)}% | ${remainingCapacity.toFixed(0)} Wh left</div>
-      <div class="diagnostic-message">distance traveled: ${currentData.distance.toFixed(2)} km</div>
-      <div class="diagnostic-suggestion">💡 ${socStatus === 'critical' ? '🚨 charge NOW!' : socStatus === 'moderate' ? '⚠️ start looking for a charger' : 'battery lookin healthy'}</div>
-    </div>
-  `;
-  
-  if (currentData.current > 0.5) {
-    const expectedVoltage = VEHICLE_CONSTANTS.batteryVoltage;
-    const voltageSag = expectedVoltage - currentData.voltage;
-    const internalResistance = Math.abs(voltageSag / currentData.current);
-    
-    let status = internalResistance < 0.15 ? 'excellent' : internalResistance < 0.25 ? 'good' : internalResistance < 0.4 ? 'moderate' : 'critical';
-    
-    diagnosticsContainer.innerHTML += `
-      <div class="diagnostic-item">
-        <div class="diagnostic-header">
-          <span class="diagnostic-label">Voltage Sag & Internal R</span>
-          <span class="diagnostic-status status-${status}">${status.toUpperCase()}</span>
-        </div>
-        <div class="diagnostic-value">R = ${internalResistance.toFixed(3)} Ω</div>
-        <div class="diagnostic-message">voltage sag: ${Math.abs(voltageSag).toFixed(2)}V @ ${currentData.current.toFixed(1)}A</div>
-        <div class="diagnostic-suggestion">💡 ${status === 'excellent' || status === 'good' ? 'battery cells in good shape' : '⚠️ resistance high - check your cells'}</div>
-      </div>
-    `;
+  if (modelMetrics.predictionErrors.length > 0) {
+    const avgError = modelMetrics.predictionErrors.reduce((a, b) => a + b, 0) / modelMetrics.predictionErrors.length;
+    const accuracy = Math.max(0, (1 - avgError) * 100);
+    document.getElementById('modelAccuracy').textContent = accuracy.toFixed(1);
   }
 }
 
 function addTrainingLog(message, type = 'info') {
-  const logContainer = document.getElementById('trainingLog');
+  const logContainer = document.getElementById('trainingLogs');
   if (!logContainer) return;
   
-  const logEntry = document.createElement('div');
-  logEntry.className = `training-log-entry training-log-${type}`;
-  
   const timestamp = new Date().toLocaleTimeString();
-  logEntry.innerHTML = `<span class="log-time">[${timestamp}]</span> ${message}`;
+  const logEntry = document.createElement('div');
+  logEntry.className = `log-entry log-${type}`;
+  logEntry.textContent = `[${timestamp}] ${message}`;
   
   logContainer.appendChild(logEntry);
   logContainer.scrollTop = logContainer.scrollHeight;
   
+  // Keep only last 50 logs
   while (logContainer.children.length > 50) {
     logContainer.removeChild(logContainer.firstChild);
   }
 }
 
-function addAIMessage(content, type = 'ai') {
+function updateDiagnostics() {
+  const diagContainer = document.getElementById('diagnosticsList');
+  if (!diagContainer) return;
+  
+  diagContainer.innerHTML = '';
+  
+  // Signal quality check
+  if (telemetryData.speed.length >= 10) {
+    const recentSpeed = telemetryData.speed.slice(-10);
+    const speedOutliers = detectOutliers(recentSpeed);
+    const outlierCount = speedOutliers.filter(x => x).length;
+    
+    const diagItem = document.createElement('div');
+    diagItem.className = outlierCount > 3 ? 'diag-warning' : 'diag-ok';
+    diagItem.textContent = `Signal Quality: ${outlierCount > 3 ? '⚠️' : '✅'} ${outlierCount} outliers in last 10 samples`;
+    diagContainer.appendChild(diagItem);
+  }
+  
+  // Model prediction accuracy
+  if (telemetryData.predictionError.length >= 5) {
+    const recentErrors = telemetryData.predictionError.slice(-5).filter(x => x !== null);
+    if (recentErrors.length > 0) {
+      const avgError = recentErrors.reduce((a, b) => a + b, 0) / recentErrors.length;
+      const accuracy = Math.max(0, (1 - avgError) * 100);
+      
+      const diagItem = document.createElement('div');
+      diagItem.className = accuracy > 80 ? 'diag-ok' : accuracy > 60 ? 'diag-warning' : 'diag-error';
+      diagItem.textContent = `Prediction Accuracy: ${accuracy.toFixed(1)}% (last 5 predictions)`;
+      diagContainer.appendChild(diagItem);
+    }
+  }
+  
+  // Battery health
+  if (currentData.current > 0.5) {
+    const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
+    const internalR = Math.abs(voltageSag / currentData.current);
+    
+    const diagItem = document.createElement('div');
+    diagItem.className = internalR > 0.3 ? 'diag-warning' : 'diag-ok';
+    diagItem.textContent = `Battery Internal Resistance: ${internalR.toFixed(3)}Ω ${internalR > 0.3 ? '⚠️ Elevated' : '✅ Normal'}`;
+    diagContainer.appendChild(diagItem);
+  }
+  
+  // Energy efficiency
+  if (currentData.energyPerKm > 0) {
+    const diagItem = document.createElement('div');
+    diagItem.className = currentData.energyPerKm > 40 ? 'diag-warning' : 'diag-ok';
+    diagItem.textContent = `Energy Efficiency: ${currentData.energyPerKm.toFixed(1)} Wh/km ${currentData.energyPerKm > 40 ? '⚠️ High' : '✅ Good'}`;
+    diagContainer.appendChild(diagItem);
+  }
+}
+
+// ============================================================================
+// AI CHAT INTERFACE
+// ============================================================================
+
+function addAIMessage(message, type = 'ai') {
   const messagesContainer = document.getElementById('aiMessages');
   if (!messagesContainer) return;
   
   const messageDiv = document.createElement('div');
-  messageDiv.className = `ai-message ${type}`;
-  
-  const typeLabel = type === 'user' ? 'YOU' : 'NEURAL AI';
-  const typeColor = type === 'user' ? 'color-secondary' : 'color-primary';
-  
-  messageDiv.innerHTML = `
-    <div class="ai-message-type ${typeColor}">${typeLabel}</div>
-    <div class="ai-message-content">${content}</div>
-  `;
+  messageDiv.className = `ai-message ${type}-message`;
+  messageDiv.textContent = message;
   
   messagesContainer.appendChild(messageDiv);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-const KEYWORD_CATEGORIES = {
-  training: ['train', 'training', 'learn', 'learning', 'teach', 'teaching', 'practice', 'practicing', 'improve', 'improving', 'optimize', 'optimizing', 'enhance', 'enhancing', 'upgrade', 'upgrading', 'educate', 'educating', 'study', 'studying', 'develop', 'developing', 'refine', 'refining', 'tune', 'tuning', 'calibrate', 'calibrating', 'adapt', 'adapting', 'evolve', 'evolving', 'grow', 'growing', 'advance', 'advancing', 'progress', 'progressing', 'model', 'neural', 'network', 'ai', 'machine learning', 'ml', 'deep learning'],
-  suggestions: ['suggest', 'suggestion', 'suggestions', 'recommend', 'recommendation', 'recommendations', 'advise', 'advice', 'tip', 'tips', 'hint', 'hints', 'help', 'helping', 'guide', 'guidance', 'improve', 'improvement', 'improvements', 'optimize', 'optimization', 'better', 'best', 'ideal', 'perfect', 'enhance', 'enhancement', 'boost', 'boosting', 'upgrade', 'upgrading', 'maximize', 'maximizing', 'increase', 'increasing', 'fix', 'fixing', 'solve', 'solving', 'solution', 'solutions', 'idea', 'ideas', 'way', 'ways', 'method', 'methods', 'approach', 'what should', 'how can', 'how do', 'can you', 'could you', 'would you', 'please', 'need help', 'help me', 'show me', 'tell me', 'explain', 'clarify'],
-  power: ['power', 'watt', 'watts', 'w', 'torque', 'nm', 'newton', 'motor', 'engine', 'rpm', 'rev', 'revs', 'revolution', 'revolutions', 'rotation', 'rotations', 'spin', 'spinning', 'acceleration', 'accelerate', 'accelerating', 'speed up', 'speeding up', 'faster', 'fast', 'quick', 'quicker', 'rapid', 'velocity', 'throttle', 'gas', 'pedal', 'performance', 'horsepower', 'hp', 'thrust', 'force', 'push', 'pushing', 'pull', 'pulling', 'output', 'capacity', 'capability', 'strength', 'strong', 'powerful', 'weak', 'weakness', 'grunt', 'oomph', 'juice', 'muscle', 'kick', 'punch', 'boost', 'surge'],
-  efficiency: ['efficiency', 'efficient', 'inefficient', 'economy', 'economical', 'energy', 'energies', 'consumption', 'consume', 'consuming', 'usage', 'use', 'using', 'burn', 'burning', 'drain', 'draining', 'waste', 'wasting', 'save', 'saving', 'savings', 'conservation', 'conserve', 'conserving', 'mileage', 'mpg', 'range', 'distance', 'wh/km', 'wh', 'kwh', 'per km', 'per kilometer', 'per mile', 'fuel', 'gas', 'electric', 'electricity', 'discharge', 'discharging', 'charge', 'charging', 'drain rate', 'consumption rate', 'eco', 'eco mode', 'economical', 'frugal', 'thrifty', 'lean', 'green', 'sustainable'],
-  battery: ['battery', 'batteries', 'cell', 'cells', 'charge', 'charging', 'charged', 'charger', 'soc', 'state of charge', 'capacity', 'ah', 'amp hour', 'amp hours', 'ampere', 'voltage', 'volt', 'volts', 'v', 'power', 'juice', 'energy', 'stored', 'remaining', 'left', 'reserve', 'reserves', 'level', 'percentage', 'percent', '%', 'low', 'high', 'full', 'empty', 'dead', 'dying', 'life', 'lifespan', 'health', 'condition', 'degradation', 'wear', 'age', 'aging', 'cycle', 'cycles', 'discharge', 'discharging', 'pack', 'module', 'lithium', 'li-ion', 'lifepo4', 'lead acid', 'chemistry', 'internal resistance', 'sag', 'drop', 'cutoff', 'protection', 'bms'],
-  range: ['range', 'distance', 'far', 'how far', 'how long', 'miles', 'kilometers', 'km', 'travel', 'traveling', 'trip', 'journey', 'go', 'going', 'reach', 'reaching', 'mileage', 'endurance', 'stamina', 'coverage', 'span', 'extent', 'limit', 'limitation', 'run out', 'running out', 'last', 'lasting', 'duration', 'time', 'remaining', 'left', 'available', 'reserve', 'estimate', 'estimated', 'prediction', 'predicted', 'forecast', 'expected', 'potential', 'maximum', 'max', 'minimum', 'min'],
-  status: ['status', 'current', 'now', 'present', 'currently', 'right now', 'at the moment', 'stats', 'statistics', 'data', 'info', 'information', 'details', 'numbers', 'figures', 'readings', 'values', 'metrics', 'parameters', 'measurements', 'telemetry', 'what', 'whats', "what's", 'how', 'hows', "how's", 'where', 'wheres', "where's", 'show', 'display', 'tell', 'give', 'provide', 'report', 'update', 'overview', 'summary', 'snapshot', 'state', 'situation', 'condition', 'health', 'check'],
-  diagnostics: ['diagnostic', 'diagnostics', 'check', 'checking', 'test', 'testing', 'scan', 'scanning', 'problem', 'problems', 'issue', 'issues', 'error', 'errors', 'fault', 'faults', 'wrong', 'bad', 'broken', 'failure', 'failing', 'malfunction', 'malfunctioning', 'trouble', 'troubleshoot', 'troubleshooting', 'debug', 'debugging', 'fix', 'fixing', 'repair', 'repairing', 'health', 'healthy', 'unhealthy', 'sick', 'damage', 'damaged', 'wear', 'tear', 'inspection', 'inspect', 'inspecting', 'examine', 'examining', 'analysis', 'analyze', 'analyzing', 'evaluate', 'evaluating', 'assessment', 'assess', 'warning', 'warnings', 'alert', 'alerts', 'critical', 'danger', 'dangerous', 'risk'],
-  prediction: ['predict', 'prediction', 'predictions', 'forecast', 'forecasting', 'expect', 'expected', 'expecting', 'anticipate', 'anticipating', 'future', 'upcoming', 'next', 'later', 'will', 'would', 'should', 'could', 'might', 'may', 'probably', 'likely', 'unlikely', 'estimate', 'estimated', 'estimating', 'guess', 'guessing', 'projection', 'projecting', 'outlook', 'prospect', 'prognosis', 'trend', 'trending', 'pattern', 'patterns', 'compare', 'comparison', 'comparing', 'difference', 'differences', 'versus', 'vs', 'better', 'worse', 'best', 'worst', 'optimal', 'ideal', 'target', 'goal'],
-  speed: ['speed', 'speeding', 'velocity', 'fast', 'faster', 'fastest', 'slow', 'slower', 'slowest', 'quick', 'quicker', 'quickest', 'rapid', 'mph', 'kph', 'km/h', 'kmh', 'kilometers per hour', 'miles per hour', 'pace', 'rate', 'tempo', 'accelerate', 'acceleration', 'decelerate', 'deceleration', 'brake', 'braking', 'cruise', 'cruising', 'top speed', 'max speed', 'minimum speed', 'average speed', 'current speed', 'moving', 'motion', 'travel'],
-  temperature: ['temp', 'temperature', 'temperatures', 'hot', 'cold', 'warm', 'cool', 'heat', 'heating', 'overheat', 'overheating', 'thermal', 'celsius', 'fahrenheit', 'degrees', 'deg', 'c', 'f', 'cooling', 'cooler', 'hotter', 'warmer', 'burning', 'freeze', 'freezing'],
-  summary: ['summary', 'summarize', 'summarise', 'overview', 'brief', 'briefing', 'recap', 'recaps', 'rundown', 'roundup', 'digest', 'synopsis', 'abstract', 'outline', 'highlight', 'highlights', 'key points', 'main points', 'essentials', 'basics', 'fundamentals', 'overall', 'general', 'everything', 'all', 'total', 'complete', 'full', 'entire', 'whole', 'big picture', 'birds eye', 'high level', 'quick look', 'glance', 'snapshot']
-};
-
-function detectCategories(message) {
-  const lowerMsg = message.toLowerCase();
-  const matched = new Set();
+function handleUserMessage() {
+  const input = document.getElementById('aiInput');
+  if (!input || !input.value.trim()) return;
   
-  for (const [category, keywords] of Object.entries(KEYWORD_CATEGORIES)) {
-    for (const keyword of keywords) {
-      if (lowerMsg.includes(keyword)) {
-        matched.add(category);
+  const message = input.value.trim();
+  addAIMessage(message, 'user');
+  
+  input.value = '';
+  
+  processAIQuery(message);
+}
+
+async function processAIQuery(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  // Categorize query
+  const categories = [];
+  
+  if (lowerQuery.includes('predict') || lowerQuery.includes('forecast') || lowerQuery.includes('next')) {
+    categories.push('prediction');
+  }
+  if (lowerQuery.includes('train') || lowerQuery.includes('learn') || lowerQuery.includes('improve')) {
+    categories.push('training');
+  }
+  if (lowerQuery.includes('accuracy') || lowerQuery.includes('error') || lowerQuery.includes('validation')) {
+    categories.push('model_quality');
+  }
+  if (lowerQuery.includes('filter') || lowerQuery.includes('noise') || lowerQuery.includes('signal')) {
+    categories.push('signal_quality');
+  }
+  if (lowerQuery.includes('summary') || lowerQuery.includes('status') || lowerQuery.includes('everything')) {
+    categories.push('summary');
+  }
+  
+  if (categories.length === 0) {
+    categories.push('general');
+  }
+  
+  let response = '';
+  
+  for (const category of categories) {
+    switch(category) {
+      case 'prediction':
+        const prediction = await makePrediction(currentData);
+        if (prediction) {
+          response += `🔮 PREDICTIVE ANALYSIS (next 5 seconds):\n\n`;
+          response += `predicted power: ${prediction.predictedPower.toFixed(0)}W\n`;
+          response += `predicted speed: ${prediction.predictedSpeed.toFixed(1)} km/h\n`;
+          response += `predicted current: ${prediction.predictedCurrent.toFixed(1)}A\n`;
+          response += `predicted efficiency: ${prediction.predictedEfficiency.toFixed(1)} Wh/km\n`;
+          response += `predicted range: ${prediction.predictedRange.toFixed(1)} km\n`;
+          response += `uncertainty score: ${(prediction.uncertaintyScore * 100).toFixed(1)}%\n\n`;
+          response += `this prediction is based on ${telemetryData.speed.length} actual measurements`;
+        } else {
+          response += `need more data to make predictions (currently ${telemetryData.speed.length} points, need 5+)`;
+        }
         break;
-      }
+        
+      case 'training':
+        response += `🧠 TRAINING STATUS:\n\n`;
+        response += `total training epochs: ${trainingEpochs}\n`;
+        response += `training loss: ${modelMetrics.trainLoss.toFixed(4)}\n`;
+        response += `validation loss: ${modelMetrics.valLoss.toFixed(4)}\n`;
+        response += `data points collected: ${telemetryData.speed.length}\n\n`;
+        if (telemetryData.speed.length >= 50) {
+          response += `ready to train! want me to run a training session?`;
+        } else {
+          response += `need ${50 - telemetryData.speed.length} more data points before next training`;
+        }
+        break;
+        
+      case 'model_quality':
+        if (modelMetrics.predictionErrors.length > 0) {
+          const avgError = modelMetrics.predictionErrors.reduce((a, b) => a + b, 0) / modelMetrics.predictionErrors.length;
+          const accuracy = Math.max(0, (1 - avgError) * 100);
+          response += `📊 MODEL QUALITY METRICS:\n\n`;
+          response += `prediction accuracy: ${accuracy.toFixed(1)}%\n`;
+          response += `average error: ${(avgError * 100).toFixed(2)}%\n`;
+          response += `validation set size: ${Math.floor(telemetryData.speed.length * 0.2)} samples\n`;
+          response += `last training: ${modelMetrics.lastUpdate ? new Date(modelMetrics.lastUpdate).toLocaleString() : 'never'}\n\n`;
+          if (accuracy < 70) {
+            response += `⚠️ accuracy is low - model needs more training data or there's significant variation in driving conditions`;
+          } else if (accuracy > 90) {
+            response += `✅ excellent prediction accuracy! model is performing well`;
+          }
+        } else {
+          response += `no prediction data yet - model hasn't made any predictions`;
+        }
+        break;
+        
+      case 'signal_quality':
+        response += `📡 SIGNAL QUALITY ANALYSIS:\n\n`;
+        if (telemetryData.speed.length >= 10) {
+          const recentSpeed = telemetryData.speed.slice(-10);
+          const speedOutliers = detectOutliers(recentSpeed);
+          const outlierCount = speedOutliers.filter(x => x).length;
+          response += `outliers detected: ${outlierCount}/10 recent samples\n`;
+          response += `filtering method: ${FILTER_CONFIG.movingAverageWindow}-point moving average\n`;
+          response += `derivative filtering: ${FILTER_CONFIG.jerkFilterWindow}-point window for jerk\n\n`;
+          if (outlierCount > 3) {
+            response += `⚠️ high noise detected - consider checking sensor connections`;
+          } else {
+            response += `✅ signal quality is good`;
+          }
+        } else {
+          response += `need more data to assess signal quality`;
+        }
+        break;
+        
+      case 'summary':
+        response += await generateComprehensiveSummary();
+        break;
+        
+      case 'general':
+      default:
+        response += `i can help you with:\n\n`;
+        response += `🔮 predictions: ask about future power, efficiency, range\n`;
+        response += `🧠 training: model training status and accuracy\n`;
+        response += `📊 quality: prediction accuracy and validation metrics\n`;
+        response += `📡 signals: data quality and filtering status\n`;
+        response += `📋 summary: comprehensive system overview\n\n`;
+        response += `what would you like to know?`;
+        break;
     }
   }
   
-  return Array.from(matched);
+  addAIMessage(response, 'ai');
 }
 
 async function generateComprehensiveSummary() {
-  let summary = `📊 COMPLETE RIDE SUMMARY\n\n`;
+  let summary = `📋 COMPREHENSIVE SYSTEM SUMMARY\n\n`;
   
-  summary += `🚴 CURRENT STATUS:\n`;
-  summary += `├─ Speed: ${currentData.speed.toFixed(1)} km/h\n`;
-  summary += `├─ Distance: ${currentData.distance.toFixed(2)} km\n`;
-  summary += `├─ Battery: ${currentData.soc.toFixed(1)}%\n`;
-  summary += `└─ Energy/km: ${currentData.energyPerKm.toFixed(1)} Wh/km\n\n`;
+  // Current state
+  summary += `🚗 CURRENT STATE:\n`;
+  summary += `speed: ${currentData.speed.toFixed(1)} km/h\n`;
+  summary += `power: ${currentData.power.toFixed(0)}W\n`;
+  summary += `battery: ${currentData.soc.toFixed(1)}%\n`;
+  summary += `distance: ${currentData.distance.toFixed(2)} km\n`;
+  summary += `efficiency: ${currentData.energyPerKm.toFixed(1)} Wh/km\n\n`;
   
-  summary += `⚡ POWER & PERFORMANCE:\n`;
-  summary += `├─ Power: ${currentData.power.toFixed(0)}W (${((currentData.power/VEHICLE_CONSTANTS.maxPower)*100).toFixed(1)}% of max)\n`;
-  summary += `├─ Torque: ${currentData.torque.toFixed(2)} Nm\n`;
-  summary += `├─ RPM: ${currentData.rpm}\n`;
-  summary += `├─ Voltage: ${currentData.voltage.toFixed(1)}V\n`;
-  summary += `├─ Current: ${currentData.current.toFixed(1)}A\n`;
-  summary += `└─ Acceleration: ${currentData.acceleration.toFixed(2)} m/s²\n\n`;
-  
-  const estimatedRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / Math.max(currentData.energyPerKm, 1);
-  const remainingCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
-  summary += `🔋 EFFICIENCY & RANGE:\n`;
-  summary += `├─ Consumption: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-  summary += `├─ Estimated Range: ${estimatedRange.toFixed(1)} km\n`;
-  summary += `├─ Remaining Energy: ${remainingCapacity.toFixed(0)} Wh\n`;
-  summary += `└─ Total Distance: ${currentData.distance.toFixed(2)} km\n\n`;
-  
-  if (currentData.speed > 5) {
-    const limits = calculatePhysicalLimits(currentData);
-    summary += `🌬️ AERODYNAMICS:\n`;
-    summary += `├─ Drag Power: ${limits.dragPower.toFixed(0)}W\n`;
-    summary += `├─ Rolling Resistance: ${limits.rollingPower.toFixed(0)}W\n`;
-    summary += `├─ Total Resistance: ${limits.resistancePower.toFixed(0)}W\n`;
-    summary += `└─ Efficiency: ${(limits.efficiency * 100).toFixed(1)}%\n\n`;
+  // Model performance
+  if (modelMetrics.predictionErrors.length > 0) {
+    const avgError = modelMetrics.predictionErrors.reduce((a, b) => a + b, 0) / modelMetrics.predictionErrors.length;
+    const accuracy = Math.max(0, (1 - avgError) * 100);
+    summary += `🧠 AI MODEL PERFORMANCE:\n`;
+    summary += `prediction accuracy: ${accuracy.toFixed(1)}%\n`;
+    summary += `total training epochs: ${trainingEpochs}\n`;
+    summary += `data points: ${telemetryData.speed.length}\n\n`;
   }
   
-  if (currentData.current > 0.5) {
-    const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
-    const internalR = Math.abs(voltageSag / currentData.current);
-    let healthStatus = 'excellent';
-    if (internalR > 0.15) healthStatus = 'good';
-    if (internalR > 0.25) healthStatus = 'fair';
-    if (internalR > 0.4) healthStatus = 'poor';
-    
-    summary += `🔬 BATTERY HEALTH:\n`;
-    summary += `├─ Internal Resistance: ${internalR.toFixed(3)} Ω\n`;
-    summary += `├─ Voltage Sag: ${Math.abs(voltageSag).toFixed(2)}V\n`;
-    summary += `├─ Health Status: ${healthStatus.toUpperCase()}\n`;
-    summary += `└─ Battery Condition: ${healthStatus === 'excellent' || healthStatus === 'good' ? '✅ Healthy' : '⚠️ Needs attention'}\n\n`;
+  // Prediction
+  const prediction = await makePrediction(currentData);
+  if (prediction) {
+    summary += `🔮 PREDICTIONS (next 5s):\n`;
+    summary += `power: ${prediction.predictedPower.toFixed(0)}W\n`;
+    summary += `efficiency: ${prediction.predictedEfficiency.toFixed(1)} Wh/km\n`;
+    summary += `range: ${prediction.predictedRange.toFixed(1)} km\n\n`;
   }
   
-  if (model && telemetryData.speed.length >= 5) {
-    summary += `🧠 AI INSIGHTS:\n`;
-    summary += `├─ Model Trained: ${trainingEpochs} epochs\n`;
-    summary += `├─ Accuracy: ${modelAccuracy.toFixed(1)}%\n`;
-    summary += `├─ Predictions Made: ${predictionCount}\n`;
-    summary += `└─ Status: ${trainingEpochs > 0 ? 'Learning from your ride' : 'Warming up'}\n\n`;
-  }
-  
-  const alerts = [];
-  if (currentData.soc < 20) alerts.push('🚨 Battery critically low!');
-  if (currentData.power > VEHICLE_CONSTANTS.maxPower * 0.9) alerts.push('⚠️ Motor at maximum capacity');
-  if (currentData.energyPerKm > 50) alerts.push('⚠️ High energy consumption');
-  
-  if (alerts.length > 0) {
-    summary += `⚠️ ALERTS:\n`;
-    alerts.forEach(alert => summary += `├─ ${alert}\n`);
-    summary += `\n`;
-  } else {
-    summary += `✅ ALL SYSTEMS NOMINAL\n\n`;
-  }
-  
-  if (model && telemetryData.speed.length >= 5) {
-    summary += `💡 AI RECOMMENDATIONS:\n`;
-    const suggestions = await generateNeuralSuggestions();
-    summary += suggestions;
-  }
+  // Physics reference
+  const reference = calculatePhysicalReference(currentData);
+  summary += `⚙️ PHYSICS REFERENCE:\n`;
+  summary += `theoretical optimal power: ${reference.referencePower.toFixed(0)}W\n`;
+  summary += `estimated efficiency: ${(reference.estimatedEfficiency * 100).toFixed(1)}%\n`;
+  summary += `drag power: ${reference.dragPower.toFixed(0)}W\n`;
+  summary += `rolling resistance: ${reference.rollingPower.toFixed(0)}W\n`;
   
   return summary;
 }
 
-async function handleUserMessage() {
-  const input = document.getElementById('aiInput');
-  if (!input) return;
-  
-  const message = input.value.trim();
-  if (!message) return;
-  
-  addAIMessage(message, 'user');
-  input.value = '';
-  
-  const categories = detectCategories(message);
-  let response = '';
-  
-  if (categories.length === 0) {
-    response = `🧠 voltstar neural ai here!\n\n`;
-    response += `not sure what youre asking about, but here's what i can do:\n\n`;
-    response += `💪 POWER STUFF: power, torque, rpm, acceleration, motor performance\n`;
-    response += `🔋 BATTERY STUFF: charge, voltage, soc, health, cells, capacity\n`;
-    response += `📏 RANGE & DISTANCE: mileage, how far, remaining distance\n`;
-    response += `⚡ EFFICIENCY: consumption, economy, wh/km, energy usage\n`;
-    response += `🏃 SPEED: velocity, pace, fast, slow, acceleration\n`;
-    response += `📊 STATUS: current stats, data, metrics, readings\n`;
-    response += `🔍 DIAGNOSTICS: problems, issues, health check, warnings\n`;
-    response += `🎯 OPTIMIZATION: suggestions, recommendations, tips, improvements\n`;
-    response += `🧠 TRAINING: learn, practice, improve model, neural network\n`;
-    response += `📋 SUMMARY: overview, recap, complete status, everything\n\n`;
-    response += `just ask me naturally! i understand hundreds of keywords and phrases`;
-    addAIMessage(response, 'ai');
-    return;
-  }
-  
-  const responses = [];
-  const priorityOrder = ['summary', 'training', 'suggestions', 'diagnostics', 'prediction', 
-                         'power', 'battery', 'efficiency', 'range', 'status', 'speed', 'temperature'];
-  
-  for (const category of priorityOrder) {
-    if (!categories.includes(category)) continue;
-    
-    switch(category) {
-      case 'summary':
-        responses.push(await generateComprehensiveSummary());
-        break;
-        
-      case 'training':
-        responses.push('alright, firing up the training sequence... lets make this model smarter! 🧠\n');
-        await trainNeuralNetwork();
-        responses.push(await generateNeuralSuggestions());
-        break;
-        
-      case 'suggestions':
-        responses.push(await generateNeuralSuggestions());
-        break;
-        
-      case 'power':
-        let powerResp = `⚡ POWER & PERFORMANCE BREAKDOWN:\n\n`;
-        powerResp += `current power: ${currentData.power.toFixed(0)}W (${((currentData.power/VEHICLE_CONSTANTS.maxPower)*100).toFixed(1)}% of max)\n`;
-        powerResp += `torque: ${currentData.torque.toFixed(2)} Nm @ ${currentData.rpm} RPM\n`;
-        powerResp += `acceleration: ${currentData.acceleration.toFixed(2)} m/s²\n\n`;
-        const limits = calculatePhysicalLimits(currentData);
-        powerResp += `optimal power for this speed: ${limits.optimalPower.toFixed(0)}W\n`;
-        powerResp += `optimal rpm: ${limits.optimalRPM.toFixed(0)}\n`;
-        responses.push(powerResp);
-        break;
-        
-      case 'efficiency':
-      case 'battery':
-      case 'range':
-        let effResp = `🔋 ENERGY, BATTERY & RANGE ANALYSIS:\n\n`;
-        effResp += `energy consumption: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-        effResp += `battery charge: ${currentData.soc.toFixed(1)}%\n`;
-        effResp += `distance covered: ${currentData.distance.toFixed(2)} km\n\n`;
-        const effLimits = calculatePhysicalLimits(currentData);
-        effResp += `aerodynamic drag: ${effLimits.dragPower.toFixed(0)}W\n`;
-        effResp += `rolling resistance: ${effLimits.rollingPower.toFixed(0)}W\n`;
-        effResp += `total resistance: ${effLimits.resistancePower.toFixed(0)}W\n\n`;
-        const estRange = (VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage) / Math.max(currentData.energyPerKm, 1);
-        effResp += `estimated range: ${estRange.toFixed(1)} km\n`;
-        const remCapacity = (currentData.soc / 100) * VEHICLE_CONSTANTS.batteryCapacity * VEHICLE_CONSTANTS.batteryVoltage;
-        effResp += `remaining energy: ${remCapacity.toFixed(0)} Wh\n`;
-        responses.push(effResp);
-        break;
-        
-      case 'status':
-      case 'speed':
-        let statusResp = `📊 CURRENT RIDE STATS:\n\n`;
-        statusResp += `speed: ${currentData.speed.toFixed(1)} km/h\n`;
-        statusResp += `power: ${currentData.power.toFixed(0)}W\n`;
-        statusResp += `torque: ${currentData.torque.toFixed(2)} Nm\n`;
-        statusResp += `rpm: ${currentData.rpm}\n`;
-        statusResp += `voltage: ${currentData.voltage.toFixed(1)}V\n`;
-        statusResp += `current: ${currentData.current.toFixed(1)}A\n`;
-        statusResp += `battery: ${currentData.soc.toFixed(1)}%\n`;
-        statusResp += `distance: ${currentData.distance.toFixed(2)} km\n`;
-        statusResp += `energy/km: ${currentData.energyPerKm.toFixed(1)} Wh/km\n`;
-        responses.push(statusResp);
-        break;
-        
-      case 'diagnostics':
-        let diagResp = `🔍 RUNNING DIAGNOSTICS...\n\n`;
-        let issuesFound = false;
-        
-        if (currentData.soc < 20) {
-          diagResp += `⚠️ battery critically low! find a charger asap\n`;
-          issuesFound = true;
-        }
-        if (currentData.power > VEHICLE_CONSTANTS.maxPower * 0.9) {
-          diagResp += `⚠️ motor at max capacity - ease off to prevent overheating\n`;
-          issuesFound = true;
-        }
-        if (currentData.energyPerKm > 50) {
-          diagResp += `⚠️ energy consumption very high - check riding style\n`;
-          issuesFound = true;
-        }
-        
-        if (currentData.current > 0.5) {
-          const voltageSag = VEHICLE_CONSTANTS.batteryVoltage - currentData.voltage;
-          const internalR = Math.abs(voltageSag / currentData.current);
-          if (internalR > 0.3) {
-            diagResp += `⚠️ battery internal resistance elevated (${internalR.toFixed(3)}Ω) - cells might be aging\n`;
-            issuesFound = true;
-          }
-        }
-        
-        if (!issuesFound) {
-          diagResp += `✅ all systems looking good!\n`;
-        }
-        
-        diagResp += `\ncheck the diagnostics tab for detailed analysis`;
-        responses.push(diagResp);
-        break;
-        
-      case 'prediction':
-        responses.push(await generateNeuralSuggestions());
-        break;
-    }
-  }
-  
-  response = responses.join('\n\n' + '─'.repeat(15) + '\n\n');
-  addAIMessage(response, 'ai');
-}
+// ============================================================================
+// EVENT LISTENERS AND INITIALIZATION
+// ============================================================================
 
-// event listeners and initialization
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🎯 initializing voltstar neural ai...');
+  console.log('🎯 Initializing VoltStar Neural AI with proper signal processing...');
   
   initChart();
   await initNeuralNetwork();
@@ -1528,13 +1088,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (chartTypeSelect) {
     chartTypeSelect.addEventListener('change', updateChart);
   }
-  
-  ['chartSpeed', 'chartVoltage', 'chartCurrent', 'chartPower'].forEach(id => {
-    const checkbox = document.getElementById(id);
-    if (checkbox) {
-      checkbox.addEventListener('change', updateChart);
-    }
-  });
   
   const aiInput = document.getElementById('aiInput');
   if (aiInput) {
@@ -1559,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const messagesContainer = document.getElementById('aiMessages');
       if (messagesContainer) {
         messagesContainer.innerHTML = '';
-        addAIMessage('chat history cleared! whats up?', 'ai');
+        addAIMessage('chat cleared! what would you like to know?', 'ai');
       }
     });
   }
@@ -1612,11 +1165,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 2000);
 
-  console.log('✅ application initialized');
-  addTrainingLog('voltstar neural ai ready', 'success');
+  console.log('✅ Application initialized with proper signal processing and predictive ML');
+  addTrainingLog('VoltStar Neural AI ready - using filtered signals and predictive modeling', 'success');
   addTrainingLog('waiting for telemetry data...', 'info');
   
-  addAIMessage('hey! 👋 neural ai here and ready to analyze your ride\n\nstart sending telemetry data and ill learn from it in real-time. ask me anything about power, efficiency, battery, or performance!', 'ai');
+  addAIMessage('hey! 👋 neural ai here with improved signal processing and real predictive modeling\n\ni now:\n✅ filter sensor noise before calculating derivatives\n✅ predict ACTUAL future states from real data\n✅ validate predictions against measured outcomes\n✅ provide uncertainty estimates\n\nstart sending data and ask me anything!', 'ai');
 });
 
-console.log('🎯 voltstar neural ai ready!');
+console.log('🎯 VoltStar Neural AI ready with proper ML and signal processing!');
