@@ -51,7 +51,7 @@ let currentData = {
 };
 
 let chatHistory = [];
-let maxDataPoints = 100;
+let maxDataPoints = 500; // CHANGED: Store last 500 values
 let isConnected = false;
 
 // Vehicle physical constants
@@ -70,7 +70,7 @@ const VEHICLE_CONSTANTS = {
   maxPower: 1000,
   maxCurrent: 30,
   maxVoltage: 60,
-  maxSpeed: 50,
+  maxSpeed: 60,
   internalResistanceRange: [0.05, 0.5],
   efficiencyRange: [0.7, 0.95],
   maxAcceleration: 5,
