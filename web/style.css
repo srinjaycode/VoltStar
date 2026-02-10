@@ -1111,3 +1111,38 @@ body {
     padding: 0.5rem;
   }
 }
+/* Time window buttons */
+.time-window-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.time-window-btn {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(0, 255, 0, 0.2);
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.time-window-btn:hover {
+  border-color: var(--color-excellent);
+  color: var(--text);
+  background: rgba(0, 255, 0, 0.1);
+}
+
+.time-window-btn.active {
+  background: rgba(0, 255, 0, 0.2);
+  border-color: var(--color-excellent);
+  color: var(--color-excellent);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.time-window-btn:active {
+  transform: translateY(1px);
+}
