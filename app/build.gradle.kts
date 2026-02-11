@@ -77,4 +77,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+
+    // USB Serial library for Cycle Analyst communication
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.3")
 }

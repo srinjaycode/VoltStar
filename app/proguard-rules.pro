@@ -19,3 +19,18 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep Firebase classes
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.firebase.**
+
+# Keep USB Serial classes
+-keep class com.hoho.android.usbserial.** { *; }
+-dontwarn com.hoho.android.usbserial.**
+
+# Keep Kotlin metadata
+-keep class kotlin.Metadata { *; }
+
+# Keep data classes
+-keep class com.abdulhayee.voltstar.TelemetryData { *; }
+-keep class com.abdulhayee.voltstar.FlagsDecoded { *; }

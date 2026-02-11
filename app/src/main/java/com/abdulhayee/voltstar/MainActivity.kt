@@ -1,23 +1,26 @@
 package com.abdulhayee.voltstar
 
 import android.app.Application
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ActivityInfo
-import android.net.Uri
+import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,621 +29,814 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.google.firebase.FirebaseApp
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.DatabaseReference
+import com.hoho.android.usbserial.driver.*
+import com.hoho.android.usbserial.util.SerialInputOutputManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.tasks.await
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.collections.ArrayList
 import kotlin.math.absoluteValue
 
-// Constants
-object Constants {
-    const val TAG = "VoltStar"
-    const val MONITORING_INTERVAL_MS = 1000L
-    const val ERROR_RETRY_DELAY_MS = 5000L
-    const val BATCH_SIZE = 10
-    const val MAX_LOG_ENTRIES = 100
-    const val DEBUG = true
+// ============================================================================
+// APPLICATION CLASS
+// ============================================================================
 
-    // Voltage thresholds
-    const val VOLTAGE_MIN = 45.0
-    const val VOLTAGE_MAX = 58.0
-    const val VOLTAGE_WARNING = 48.0
-
-    // Current thresholds
-    const val CURRENT_WARNING = 20.0
-    const val CURRENT_REGEN_THRESHOLD = -2.0
-}
-
-// Data class for cycle data
-data class CycleData(
-    val ah: Double = 0.0,
-    val voltage: Double = 0.0,
-    val current: Double = 0.0,
-    val speed: Double = 0.0,
-    val distance: Double = 0.0,
-    val degree: Double = 0.0,
-    val rpm: Double = 0.0,
-    val timestamp: Long = System.currentTimeMillis(),
-    val deviceId: String = "VoltStar_Android"
-) {
-    val power: Double get() = voltage * current
-    val isRegenerating: Boolean get() = current < Constants.CURRENT_REGEN_THRESHOLD
-
-    fun toFirebaseMap(): Map<String, Any> = mapOf(
-        "ah" to ah,
-        "voltage" to voltage,
-        "current" to current,
-        "speed" to speed,
-        "distance" to distance,
-        "degree" to degree,
-        "rpm" to rpm,
-        "timestamp" to timestamp,
-        "deviceId" to deviceId,
-        "power" to power
-    )
-}
-
-// UI State
-sealed interface UiState {
-    object NoFileSelected : UiState
-    data class Success(val data: CycleData) : UiState
-    data class Error(val message: String) : UiState
-}
-
-// Application class
+/**
+ * Main application class for Firebase initialization
+ */
 class VoltStarApplication : Application() {
-    companion object {
-        lateinit var instance: VoltStarApplication
-            private set
-    }
-
     override fun onCreate() {
         super.onCreate()
-        instance = this
-        FirebaseApp.initializeApp(this)
 
+        // Initialize Firebase
         FirebaseDatabase.getInstance().apply {
             setPersistenceEnabled(true)
             setPersistenceCacheSizeBytes(10 * 1024 * 1024)
         }
+
+        Log.d("VoltStar", "Application initialized")
     }
 }
 
-// Repository for data operations
-class CycleAnalystRepository {
-    private val database = FirebaseDatabase.getInstance()
-    private val readingsRef = database.getReference("cycle_readings")
-    private var lastFileSize: Long = 0L
-    private var currentUri: Uri? = null
-    private val lineParser = OptimizedLineParser()
+// ============================================================================
+// DATA CLASSES
+// ============================================================================
 
-    private val _connectionState = MutableStateFlow(false)
-    val connectionState: StateFlow<Boolean> = _connectionState.asStateFlow()
-
-    init {
-        readingsRef.keepSynced(true)
-    }
-
-    fun setFileUri(uri: Uri) {
-        currentUri = uri
-        lastFileSize = 0L
-        Log.d(Constants.TAG, "File URI set, position reset")
-    }
-
-    fun resetFilePosition() {
-        lastFileSize = 0L
-        Log.d(Constants.TAG, "File position reset to beginning")
-    }
-
-    suspend fun readNewData(context: Context): List<CycleData> = withContext(Dispatchers.IO) {
-        val newData = mutableListOf<CycleData>()
-
-        try {
-            currentUri?.let { uri ->
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val allBytes = inputStream.readBytes()
-                    val currentSize = allBytes.size.toLong()
-
-                    if (currentSize < lastFileSize) {
-                        Log.d(Constants.TAG, "File reset detected (was: $lastFileSize, now: $currentSize)")
-                        lastFileSize = 0L
-                    }
-
-                    if (currentSize > lastFileSize) {
-                        val newBytes = if (lastFileSize > 0) {
-                            allBytes.sliceArray(lastFileSize.toInt() until allBytes.size)
-                        } else {
-                            allBytes
-                        }
-
-                        val newText = String(newBytes, Charsets.UTF_8)
-                        val lines = newText.split("\n")
-
-                        Log.d(Constants.TAG, "Reading ${lines.size} new lines from position $lastFileSize")
-
-                        var parsedCount = 0
-                        lines.forEach { line ->
-                            if (line.isNotBlank()) {
-                                lineParser.parseLine(line)?.let { data ->
-                                    newData.add(data)
-                                    parsedCount++
-                                }
-                            }
-                        }
-
-                        lastFileSize = currentSize
-                        Log.d(Constants.TAG, "Parsed $parsedCount valid data points from ${lines.size} lines")
-                    }
-                }
-            } ?: run {
-                Log.w(Constants.TAG, "No file URI set")
-            }
-        } catch (e: Exception) {
-            Log.e(Constants.TAG, "Error reading file: ${e.message}", e)
-            throw e
+/**
+ * Decoded flags from Cycle Analyst Flgs column
+ */
+data class FlagsDecoded(
+    val activePreset: Int,           // Which preset is active (0-4)
+    val voltageLimiting: Boolean,    // Voltage limiting active
+    val currentLimiting: Boolean,    // Current limiting active
+    val speedLimiting: Boolean,      // Speed limiting active
+    val brakeActive: Boolean,        // Brake is engaged
+    val throttleFault: Boolean       // Throttle fault detected
+) {
+    companion object {
+        fun fromInt(flags: Int): FlagsDecoded {
+            return FlagsDecoded(
+                activePreset = flags and 0x07,
+                voltageLimiting = (flags and 0x08) != 0,
+                currentLimiting = (flags and 0x10) != 0,
+                speedLimiting = (flags and 0x20) != 0,
+                brakeActive = (flags and 0x40) != 0,
+                throttleFault = (flags and 0x80) != 0
+            )
         }
-
-        newData
     }
+}
 
-    suspend fun sendBatchToFirebase(batch: List<CycleData>) {
-        if (batch.isEmpty()) return
+/**
+ * Strongly typed telemetry data - ALL Cycle Analyst fields
+ */
+data class TelemetryData(
+    val timestamp: Long,
+    val values: Map<String, String>,
+    // Primary metrics (displayed on screen)
+    val ampHours: Double?,           // Ah
+    val voltage: Double?,             // V
+    val current: Double?,             // A
+    val speed: Double?,               // S
+    // Additional metrics (uploaded but not displayed)
+    val distance: Double?,            // D
+    val temperature: Double?,         // Deg
+    val rpm: Int?,                    // RPM
+    val humanWatts: Double?,          // HW (not used - no pedals on vehicle)
+    val torque: Double?,              // Nm
+    val throttleIn: Double?,          // ThI
+    val throttleOut: Double?,         // ThO
+    val auxAnalog: Double?,           // AuxA
+    val auxDigital: Int?,             // AuxD
+    val flagsRaw: String?,            // Flgs (as string for state representation)
+    val flags: FlagsDecoded?,         // Decoded flags for logic
+    val electricalPower: Double?      // Calculated V * A
+) {
+    fun toFirebaseMap(): Map<String, Any> {
+        return buildMap {
+            put("timestamp", timestamp)
 
-        withContext(Dispatchers.IO) {
-            var retries = 0
-            var success = false
+            // Upload ALL Cycle Analyst fields
+            ampHours?.let { put("ah", it) }
+            voltage?.let { put("voltage", it) }
+            current?.let { put("current", it) }
+            speed?.let { put("speed", it) }
+            distance?.let { put("distance", it) }
+            temperature?.let { put("temperature", it) }
+            rpm?.let { put("rpm", it) }
+            humanWatts?.let { put("humanWatts", it) }
+            torque?.let { put("torque", it) }
+            throttleIn?.let { put("throttleIn", it) }
+            throttleOut?.let { put("throttleOut", it) }
+            auxAnalog?.let { put("auxAnalog", it) }
+            auxDigital?.let { put("auxDigital", it) }
+            flagsRaw?.let { put("flags", it) }  // Upload as string
+            electricalPower?.let { put("power", it) }
 
-            while (!success && retries < 3) {
-                try {
-                    val updates = mutableMapOf<String, Any>()
-                    batch.forEach { data ->
-                        val key = readingsRef.push().key ?: return@forEach
-                        updates["/$key"] = data.toFirebaseMap()
-                    }
-
-                    readingsRef.updateChildren(updates).await()
-                    _connectionState.value = true
-                    success = true
-
-                    if (Constants.DEBUG) {
-                        Log.d(Constants.TAG, "✓ Batch sent successfully: ${batch.size} items")
-                    }
-                } catch (e: Exception) {
-                    retries++
-                    _connectionState.value = false
-                    Log.e(Constants.TAG, "✗ Failed to send batch (attempt $retries): ${e.message}", e)
-
-                    if (retries < 3) {
-                        delay(1000L * retries)
-                    } else {
-                        throw e
-                    }
-                }
+            // Also upload decoded flag states for convenience
+            flags?.let { f ->
+                put("activePreset", f.activePreset)
+                put("voltageLimiting", f.voltageLimiting)
+                put("currentLimiting", f.currentLimiting)
+                put("speedLimiting", f.speedLimiting)
+                put("brakeActive", f.brakeActive)
+                put("throttleFault", f.throttleFault)
             }
         }
     }
 }
 
-// Line parser with caching
-class OptimizedLineParser {
-    private val cache = mutableMapOf<String, CycleData?>()
-    private val regex = Regex("[,\\s]+")
+/**
+ * Log entry for UI display
+ */
+data class LogEntry(
+    val timestamp: Long,
+    val message: String,
+    val level: LogLevel
+)
 
-    fun parseLine(line: String): CycleData? {
-        val trimmed = line.trim()
+enum class LogLevel {
+    INFO, WARNING, ERROR
+}
 
-        cache[trimmed]?.let {
-            return it
+// ============================================================================
+// STREAM FRAMING
+// ============================================================================
+
+/**
+ * Handles rolling byte buffer and line extraction
+ */
+class StreamFramer {
+    private val buffer = ByteBuffer.allocate(8192)
+    private val lineQueue = ConcurrentLinkedQueue<String>()
+
+    @Synchronized
+    fun addBytes(data: ByteArray, length: Int) {
+        // Ensure capacity
+        if (buffer.remaining() < length) {
+            compact()
         }
 
-        if (trimmed.isEmpty() ||
-            trimmed.contains("ah", ignoreCase = true) ||
-            trimmed.contains("voltage", ignoreCase = true) ||
-            trimmed.contains("Amp", ignoreCase = true)) {
+        // Add new data
+        buffer.put(data, 0, length)
+    }
+
+    @Synchronized
+    fun extractLines(): List<String> {
+        val lines = mutableListOf<String>()
+
+        buffer.flip()
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+
+        var start = 0
+        for (i in bytes.indices) {
+            if (bytes[i] == '\n'.code.toByte()) {
+                val lineBytes = bytes.copyOfRange(start, i)
+                val line = String(lineBytes, Charsets.UTF_8).trim()
+                if (line.isNotEmpty()) {
+                    lines.add(line)
+                }
+                start = i + 1
+            }
+        }
+
+        // Put back incomplete line
+        buffer.clear()
+        if (start < bytes.size) {
+            buffer.put(bytes, start, bytes.size - start)
+        }
+
+        return lines
+    }
+
+    private fun compact() {
+        buffer.flip()
+        val remaining = buffer.remaining()
+        val temp = ByteArray(remaining)
+        buffer.get(temp)
+        buffer.clear()
+        buffer.put(temp)
+    }
+}
+
+// ============================================================================
+// TELEMETRY PARSER
+// ============================================================================
+
+/**
+ * Parses tab-delimited telemetry with dynamic header mapping
+ */
+class TelemetryParser {
+    private var columnMap: Map<String, Int>? = null
+
+    fun parseHeader(line: String): Boolean {
+        val columns = line.split('\t').map { it.trim() }
+        columnMap = columns.withIndex().associate { it.value to it.index }
+        Log.d("VoltStar", "Header parsed: ${columns.joinToString(", ")}")
+        return true
+    }
+
+    fun parseData(line: String): TelemetryData? {
+        val map = columnMap ?: return null
+        val values = line.split('\t').map { it.trim() }
+
+        if (values.size < map.size) {
+            Log.w("VoltStar", "Incomplete data row: expected ${map.size}, got ${values.size}")
             return null
         }
 
-        val parts = trimmed.split(regex).filter { it.isNotEmpty() }
-
-        if (parts.size < 7) {
-            return null
+        val valueMap = map.mapValues { (_, index) ->
+            values.getOrNull(index) ?: ""
         }
 
         return try {
-            val data = CycleData(
-                ah = parts[0].toDoubleOrNull() ?: 0.0,
-                voltage = parts[1].toDoubleOrNull() ?: 0.0,
-                current = parts[2].toDoubleOrNull() ?: 0.0,
-                speed = parts[3].toDoubleOrNull() ?: 0.0,
-                distance = parts[4].toDoubleOrNull() ?: 0.0,
-                degree = parts[5].toDoubleOrNull() ?: 0.0,
-                rpm = parts[6].toDoubleOrNull() ?: 0.0
+            // Extract all Cycle Analyst fields
+            val ah = map["Ah"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val voltage = map["V"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val current = map["A"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val speed = map["S"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val distance = map["D"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val temperature = map["Deg"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val rpm = map["RPM"]?.let { values.getOrNull(it)?.toIntOrNull() }
+            val humanWatts = map["HW"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val torque = map["Nm"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val throttleIn = map["ThI"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val throttleOut = map["ThO"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val auxAnalog = map["AuxA"]?.let { values.getOrNull(it)?.toDoubleOrNull() }
+            val auxDigital = map["AuxD"]?.let { values.getOrNull(it)?.toIntOrNull() }
+            val flagsRaw = map["Flgs"]?.let { values.getOrNull(it) }  // Keep as string
+            val flagsInt = flagsRaw?.toIntOrNull()
+
+            val flags = flagsInt?.let { FlagsDecoded.fromInt(it) }
+            val power = if (voltage != null && current != null) voltage * current else null
+
+            TelemetryData(
+                timestamp = System.currentTimeMillis(),
+                values = valueMap,
+                ampHours = ah,
+                voltage = voltage,
+                current = current,
+                speed = speed,
+                distance = distance,
+                temperature = temperature,
+                rpm = rpm,
+                humanWatts = humanWatts,
+                torque = torque,
+                throttleIn = throttleIn,
+                throttleOut = throttleOut,
+                auxAnalog = auxAnalog,
+                auxDigital = auxDigital,
+                flagsRaw = flagsRaw,
+                flags = flags,
+                electricalPower = power
             )
-
-            if (data.voltage < 0 || data.voltage > 100) {
-                Log.w(Constants.TAG, "Invalid voltage: ${data.voltage}")
-                return null
-            }
-            if (data.current < -100 || data.current > 100) {
-                Log.w(Constants.TAG, "Invalid current: ${data.current}")
-                return null
-            }
-
-            if (cache.size < Constants.MAX_LOG_ENTRIES) {
-                cache[trimmed] = data
-            }
-
-            if (Constants.DEBUG) {
-                Log.d(Constants.TAG, "✓ Parsed: V=${data.voltage}V, A=${data.current}A, Speed=${data.speed}km/h")
-            }
-            data
         } catch (e: Exception) {
-            Log.e(Constants.TAG, "Parse error: ${e.message}")
+            Log.e("VoltStar", "Parse error: ${e.message}")
             null
         }
     }
 }
 
-// ViewModel for state management
-class CycleAnalystViewModel(
-    private val repository: CycleAnalystRepository = CycleAnalystRepository()
-) : ViewModel() {
+// ============================================================================
+// TELEMETRY STATE
+// ============================================================================
 
-    private val _uiState = MutableStateFlow<UiState>(UiState.NoFileSelected)
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+/**
+ * Manages rolling buffers and derived values
+ */
+class TelemetryState {
+    private val maxBufferSize = 100
+    private val readings = ArrayDeque<TelemetryData>(maxBufferSize)
 
-    val connectionState = repository.connectionState
-
-    private var monitoringJob: Job? = null
-    private var totalLinesProcessed = 0
-    private val dataBuffer = mutableListOf<CycleData>()
-    private var lastBatchSend = 0L
-
-    fun startMonitoring(context: Context, uri: Uri) {
-        stopMonitoring()
-        totalLinesProcessed = 0
-        dataBuffer.clear()
-
-        repository.setFileUri(uri)
-        _uiState.value = UiState.Success(CycleData())
-
-        monitoringJob = viewModelScope.launch {
-            monitoringLoop(context)
+    @Synchronized
+    fun add(data: TelemetryData) {
+        readings.addLast(data)
+        while (readings.size > maxBufferSize) {
+            readings.removeFirst()
         }
-
-        Log.d(Constants.TAG, "=== File monitoring started ===")
     }
 
-    private suspend fun monitoringLoop(context: Context) {
-        coroutineScope {
-            while (isActive) {
-                try {
-                    val newDataList = repository.readNewData(context)
+    @Synchronized
+    fun getLatest(): TelemetryData? = readings.lastOrNull()
 
-                    if (newDataList.isNotEmpty()) {
-                        val latestData = newDataList.last()
-                        _uiState.value = UiState.Success(latestData)
+    @Synchronized
+    fun getAll(): List<TelemetryData> = readings.toList()
 
-                        dataBuffer.addAll(newDataList)
-                        totalLinesProcessed += newDataList.size
+    @Synchronized
+    fun clear() = readings.clear()
 
-                        val now = System.currentTimeMillis()
-                        if (dataBuffer.size >= Constants.BATCH_SIZE || (now - lastBatchSend) >= 5000) {
-                            repository.sendBatchToFirebase(dataBuffer.toList())
-                            dataBuffer.clear()
-                            lastBatchSend = now
+    @Synchronized
+    fun getAveragePower(seconds: Int = 10): Double? {
+        val cutoff = System.currentTimeMillis() - (seconds * 1000)
+        val recent = readings.filter { it.timestamp >= cutoff }
+        return if (recent.isEmpty()) null else {
+            recent.mapNotNull { it.electricalPower }.average()
+        }
+    }
+}
 
-                            if (Constants.DEBUG) {
-                                Log.d(Constants.TAG, "✓ Processed: ${newDataList.size} new lines (Total: $totalLinesProcessed)")
-                            }
+// ============================================================================
+// USB SERIAL MANAGER
+// ============================================================================
+
+/**
+ * Manages USB serial connection and I/O
+ */
+class UsbSerialManager(
+    private val context: Context,
+    private val onDataReceived: (TelemetryData) -> Unit,
+    private val onLog: (String, LogLevel) -> Unit,
+    private val onConnectionChanged: (Boolean) -> Unit
+) {
+    private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private var serialPort: UsbSerialPort? = null
+    private var ioManager: SerialInputOutputManager? = null
+    private val framer = StreamFramer()
+    private val parser = TelemetryParser()
+    private var headerParsed = false
+
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                ACTION_USB_PERMISSION -> {
+                    synchronized(this) {
+                        val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        }
+
+                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                            device?.let { connect(it) }
+                        } else {
+                            onLog("USB permission denied", LogLevel.ERROR)
                         }
                     }
-
-                    delay(Constants.MONITORING_INTERVAL_MS)
-
-                } catch (e: CancellationException) {
-                    if (dataBuffer.isNotEmpty()) {
-                        repository.sendBatchToFirebase(dataBuffer.toList())
+                }
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     }
-                    throw e
-                } catch (e: Exception) {
-                    Log.e(Constants.TAG, "Monitoring error: ${e.message}", e)
-                    _uiState.value = UiState.Error("File error: ${e.message}")
-                    delay(Constants.ERROR_RETRY_DELAY_MS)
+                    device?.let { requestPermission(it) }
+                }
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    disconnect()
                 }
             }
         }
     }
 
-    fun stopMonitoring() {
-        monitoringJob?.cancel()
-        monitoringJob = null
-        Log.d(Constants.TAG, "=== Monitoring stopped === (Total lines: $totalLinesProcessed)")
+    private val listener = object : SerialInputOutputManager.Listener {
+        override fun onNewData(data: ByteArray) {
+            framer.addBytes(data, data.size)
+            processLines()
+        }
+
+        override fun onRunError(e: Exception) {
+            onLog("Serial error: ${e.message}", LogLevel.ERROR)
+            disconnect()
+        }
     }
 
-    fun reset() {
-        stopMonitoring()
-        totalLinesProcessed = 0
-        _uiState.value = UiState.NoFileSelected
-        Log.d(Constants.TAG, "App reset")
+    fun init() {
+        val filter = IntentFilter().apply {
+            addAction(ACTION_USB_PERMISSION)
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(usbReceiver, filter)
+        }
+
+        // Try to connect to existing device
+        findAndConnect()
     }
 
-    fun refreshData() {
-        repository.resetFilePosition()
-        totalLinesProcessed = 0
-        Log.d(Constants.TAG, "Data refresh - will re-read entire file")
+    fun destroy() {
+        try {
+            context.unregisterReceiver(usbReceiver)
+        } catch (e: Exception) {
+            // Receiver not registered
+        }
+        disconnect()
+        scope.cancel()
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        stopMonitoring()
+    private fun findAndConnect() {
+        val availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+
+        if (availableDrivers.isEmpty()) {
+            onLog("No USB devices found", LogLevel.WARNING)
+            return
+        }
+
+        val driver = availableDrivers[0]
+        val device = driver.device
+
+        if (usbManager.hasPermission(device)) {
+            connect(device)
+        } else {
+            requestPermission(device)
+        }
+    }
+
+    private fun requestPermission(device: UsbDevice) {
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
+        val intent = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_PERMISSION), flags)
+        usbManager.requestPermission(device, intent)
+        onLog("Requesting USB permission...", LogLevel.INFO)
+    }
+
+    private fun connect(device: UsbDevice) {
+        try {
+            val driver = UsbSerialProber.getDefaultProber().probeDevice(device)
+            if (driver == null) {
+                onLog("No driver for device", LogLevel.ERROR)
+                return
+            }
+
+            val connection = usbManager.openDevice(device)
+            if (connection == null) {
+                onLog("Failed to open device", LogLevel.ERROR)
+                return
+            }
+
+            val port = driver.ports[0]
+            port.open(connection)
+            port.setParameters(9600, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            port.dtr = true
+            port.rts = true
+
+            serialPort = port
+
+            ioManager = SerialInputOutputManager(port, listener).apply {
+                readTimeout = 100
+            }
+
+            scope.launch(Dispatchers.IO) {
+                ioManager?.run()
+            }
+
+            headerParsed = false
+            onLog("Connected to ${device.deviceName}", LogLevel.INFO)
+            onConnectionChanged(true)
+
+        } catch (e: Exception) {
+            onLog("Connection error: ${e.message}", LogLevel.ERROR)
+            disconnect()
+        }
+    }
+
+    fun disconnect() {
+        ioManager?.stop()
+        ioManager = null
+
+        try {
+            serialPort?.close()
+        } catch (e: Exception) {
+            // Ignore
+        }
+        serialPort = null
+
+        headerParsed = false
+        onConnectionChanged(false)
+        onLog("Disconnected", LogLevel.WARNING)
+    }
+
+    private fun processLines() {
+        val lines = framer.extractLines()
+
+        for (line in lines) {
+            if (!headerParsed) {
+                if (line.contains("\t")) {
+                    parser.parseHeader(line)
+                    headerParsed = true
+                    onLog("Header received", LogLevel.INFO)
+                }
+            } else {
+                parser.parseData(line)?.let { data ->
+                    onDataReceived(data)
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val ACTION_USB_PERMISSION = "com.abdulhayee.voltstar.USB_PERMISSION"
     }
 }
 
-// Theme colors
-object DashboardTheme {
-    val MainBlack = Color(0xFF0D0D0D)
-    val CardBlack = Color(0xFF1A1A1A)
-    val Red = Color(0xFFFF3B30)
-    val Yellow = Color(0xFFFFCC00)
-    val Green = Color(0xFF34C759)
-    val Blue = Color(0xFF007AFF)
-    val TextPrimary = Color(0xFFFFFFFF)
-    val TextSecondary = Color(0xFF8E8E93)
+// ============================================================================
+// FIREBASE UPLOADER
+// ============================================================================
+
+/**
+ * Handles Firebase uploads
+ */
+class FirebaseUploader {
+    private val database = FirebaseDatabase.getInstance()
+    private val readingsRef = database.getReference("cycle_readings")
+    private val uploadQueue = ConcurrentLinkedQueue<TelemetryData>()
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    init {
+        readingsRef.keepSynced(true)
+        startUploadWorker()
+    }
+
+    fun enqueue(data: TelemetryData) {
+        uploadQueue.offer(data)
+    }
+
+    private fun startUploadWorker() {
+        scope.launch {
+            while (isActive) {
+                uploadQueue.poll()?.let { data ->
+                    try {
+                        val key = readingsRef.push().key ?: return@let
+                        readingsRef.child(key).setValue(data.toFirebaseMap())
+                    } catch (e: Exception) {
+                        Log.e("VoltStar", "Firebase upload error: ${e.message}")
+                    }
+                }
+                delay(100) // Batch uploads
+            }
+        }
+    }
+
+    fun destroy() {
+        scope.cancel()
+    }
 }
 
-// Main Activity
+// ============================================================================
+// MAIN ACTIVITY
+// ============================================================================
+
 class MainActivity : ComponentActivity() {
+
+    private val telemetryState = TelemetryState()
+    private val firebaseUploader = FirebaseUploader()
+    private lateinit var usbManager: UsbSerialManager
+
+    private val _currentData = MutableStateFlow<TelemetryData?>(null)
+    private val _isConnected = MutableStateFlow(false)
+    private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        usbManager = UsbSerialManager(
+            context = this,
+            onDataReceived = { data ->
+                telemetryState.add(data)
+                _currentData.value = data
+                firebaseUploader.enqueue(data)
+            },
+            onLog = { message, level ->
+                addLog(message, level)
+            },
+            onConnectionChanged = { connected ->
+                _isConnected.value = connected
+            }
+        )
+
+        usbManager.init()
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    background = DashboardTheme.MainBlack,
-                    surface = DashboardTheme.CardBlack,
-                    primary = DashboardTheme.Blue,
-                    secondary = DashboardTheme.Green
+            VoltStarTheme {
+                MainScreen(
+                    currentData = _currentData.collectAsState().value,
+                    isConnected = _isConnected.collectAsState().value,
+                    logs = _logs.collectAsState().value,
+                    onDisconnect = { usbManager.disconnect() }
                 )
-            ) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    CycleAnalystApp()
-                }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        usbManager.destroy()
+        firebaseUploader.destroy()
+    }
+
+    private fun addLog(message: String, level: LogLevel) {
+        val entry = LogEntry(System.currentTimeMillis(), message, level)
+        _logs.value = (_logs.value + entry).takeLast(50)
+
+        when (level) {
+            LogLevel.INFO -> Log.i("VoltStar", message)
+            LogLevel.WARNING -> Log.w("VoltStar", message)
+            LogLevel.ERROR -> Log.e("VoltStar", message)
         }
     }
 }
 
-// Main App Composable
-@OptIn(ExperimentalAnimationApi::class)
-@Composable
-fun CycleAnalystApp(
-    viewModel: CycleAnalystViewModel = viewModel()
-) {
-    val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsState()
-    val isConnected by viewModel.connectionState.collectAsState()
+// ============================================================================
+// UI THEME
+// ============================================================================
 
-    val fileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            viewModel.startMonitoring(context, it)
-        }
-    }
-
-    AnimatedContent(
-        targetState = uiState,
-        transitionSpec = {
-            fadeIn(animationSpec = tween(300)) with fadeOut(animationSpec = tween(300))
-        },
-        label = "MainScreenTransition"
-    ) { state ->
-        when (state) {
-            is UiState.NoFileSelected -> {
-                FileSelectionScreen(
-                    onFileSelect = {
-                        fileLauncher.launch(arrayOf("text/plain", "text/csv", "*/*"))
-                    }
-                )
-            }
-            is UiState.Success -> {
-                ModernDashboard(
-                    data = state.data,
-                    isConnected = isConnected,
-                    onStop = { viewModel.reset() },
-                    onRefresh = { viewModel.refreshData() }
-                )
-            }
-            is UiState.Error -> {
-                ErrorScreen(
-                    message = state.message,
-                    onRetry = { viewModel.reset() },
-                    onFileSelect = {
-                        fileLauncher.launch(arrayOf("text/plain", "text/csv", "*/*"))
-                    }
-                )
-            }
-        }
-    }
+object DashboardTheme {
+    val MainBlack = Color(0xFF0A0E27)
+    val CardBlack = Color(0xFF151B3D)
+    val Blue = Color(0xFF4A9EFF)
+    val Green = Color(0xFF00FF88)
+    val Yellow = Color(0xFFFFD93D)
+    val Red = Color(0xFFFF4757)
+    val TextPrimary = Color(0xFFE8E8E8)
+    val TextSecondary = Color(0xFF9CA3AF)
 }
 
-// Modern Dashboard (No Scrolling)
 @Composable
-fun ModernDashboard(
-    data: CycleData,
+fun VoltStarTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = DashboardTheme.Blue,
+            background = DashboardTheme.MainBlack,
+            surface = DashboardTheme.CardBlack
+        ),
+        content = content
+    )
+}
+
+// ============================================================================
+// UI SCREENS
+// ============================================================================
+
+@Composable
+fun MainScreen(
+    currentData: TelemetryData?,
     isConnected: Boolean,
-    onStop: () -> Unit,
-    onRefresh: () -> Unit
+    logs: List<LogEntry>,
+    onDisconnect: () -> Unit
 ) {
-    val speedColor = DashboardTheme.Green
-    val voltageColor = remember(data.voltage) {
-        when {
-            data.voltage < Constants.VOLTAGE_MIN -> DashboardTheme.Red
-            data.voltage > Constants.VOLTAGE_MAX -> DashboardTheme.Red
-            data.voltage < Constants.VOLTAGE_WARNING -> DashboardTheme.Yellow
-            else -> DashboardTheme.Green
-        }
-    }
-    val currentColor = remember(data.current) {
-        when {
-            data.current.absoluteValue > Constants.CURRENT_WARNING -> DashboardTheme.Red
-            data.current < 0 -> DashboardTheme.Green
-            else -> DashboardTheme.Yellow
-        }
-    }
-
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(DashboardTheme.MainBlack)
+            .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(0.4f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                PrimaryMetricCard(
-                    label = "SPEED",
-                    value = "%.0f".format(data.speed),
-                    unit = "km/h",
-                    color = speedColor,
-                    modifier = Modifier.weight(1f)
-                )
+        // Header
+        HeaderSection(isConnected = isConnected, onDisconnect = onDisconnect)
 
-                PrimaryMetricCard(
-                    label = "VOLTAGE",
-                    value = "%.1f".format(data.voltage),
-                    unit = "V",
-                    color = voltageColor,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        Spacer(modifier = Modifier.height(16.dp))
 
-            Column(
-                modifier = Modifier
-                    .weight(0.35f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CompactMetricCard(
-                    label = "CURRENT",
-                    value = "%.1f".format(data.current),
-                    unit = "A",
-                    color = currentColor
-                )
-                CompactMetricCard(
-                    label = "POWER",
-                    value = "%.0f".format(data.power),
-                    unit = "W",
-                    color = DashboardTheme.Blue
-                )
-                CompactMetricCard(
-                    label = "RPM",
-                    value = "%.0f".format(data.rpm),
-                    unit = "",
-                    color = DashboardTheme.Blue
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(0.25f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CompactMetricCard(
-                    label = "DISTANCE",
-                    value = "%.2f".format(data.distance),
-                    unit = "km",
-                    color = DashboardTheme.Green
-                )
-                CompactMetricCard(
-                    label = "Ah USED",
-                    value = "%.2f".format(data.ah),
-                    unit = "Ah",
-                    color = DashboardTheme.Yellow
-                )
-
-                StatusControlCard(
-                    timestamp = data.timestamp,
-                    isConnected = isConnected,
-                    onStop = onStop,
-                    onRefresh = onRefresh,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        // Main telemetry display
+        if (currentData != null) {
+            TelemetryDisplay(data = currentData)
+        } else {
+            NoDataCard()
         }
 
-        TopBar()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Log section
+        LogSection(logs = logs, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-fun TopBar() {
+fun HeaderSection(isConnected: Boolean, onDisconnect: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(DashboardTheme.CardBlack, RoundedCornerShape(12.dp))
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(DashboardTheme.Blue, RoundedCornerShape(6.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "VS",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+        Column {
             Text(
                 text = "VOLTSTAR",
-                color = DashboardTheme.TextPrimary,
-                fontSize = 18.sp,
+                color = Color.White,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 2.sp
             )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .alpha(if (isConnected) alpha else 0.3f)
+                        .background(
+                            if (isConnected) DashboardTheme.Green else Color.Gray,
+                            CircleShape
+                        )
+                )
+                Text(
+                    text = if (isConnected) "CONNECTED" else "DISCONNECTED",
+                    color = if (isConnected) DashboardTheme.Green else Color.Gray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
         }
+
+        if (isConnected) {
+            IconButton(
+                onClick = onDisconnect,
+                modifier = Modifier
+                    .background(DashboardTheme.Red.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                    .border(1.dp, DashboardTheme.Red.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            ) {
+                Icon(
+                    Icons.Default.PowerOff,
+                    contentDescription = "Disconnect",
+                    tint = DashboardTheme.Red
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TelemetryDisplay(data: TelemetryData) {
+    // Display only the 4 required metrics: Ah, V, A, S
+    // Optimized for landscape orientation
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DashboardTheme.CardBlack, RoundedCornerShape(12.dp))
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Voltage
+        PrimaryMetricCard(
+            label = "VOLTAGE",
+            value = data.voltage?.let { "%.1f".format(it) } ?: "--",
+            unit = "V",
+            color = DashboardTheme.Blue,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Current
+        PrimaryMetricCard(
+            label = "CURRENT",
+            value = data.current?.let { "%.1f".format(it) } ?: "--",
+            unit = "A",
+            color = DashboardTheme.Yellow,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Speed
+        PrimaryMetricCard(
+            label = "SPEED",
+            value = data.speed?.let { "%.1f".format(it) } ?: "--",
+            unit = "km/h",
+            color = DashboardTheme.Green,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Amp Hours
+        PrimaryMetricCard(
+            label = "AMP HOURS",
+            value = data.ampHours?.let { "%.2f".format(it) } ?: "--",
+            unit = "Ah",
+            color = DashboardTheme.Blue,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -652,377 +848,150 @@ fun PrimaryMetricCard(
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(0.dp)
+    Column(
+        modifier = modifier
+            .background(DashboardTheme.MainBlack, RoundedCornerShape(8.dp))
+            .border(2.dp, color.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                .padding(20.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = label,
-                    color = DashboardTheme.TextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 1.5.sp
-                )
-                Text(
-                    text = value,
-                    color = color,
-                    fontSize = 56.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = unit,
-                    color = DashboardTheme.TextSecondary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
+        Text(
+            text = label,
+            color = DashboardTheme.TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = value,
+            color = color,
+            fontSize = 36.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = unit,
+            color = DashboardTheme.TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
 @Composable
-fun CompactMetricCard(
-    label: String,
-    value: String,
-    unit: String,
-    color: Color
-) {
-    Card(
+fun NoDataCard() {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp),
-        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = label,
-                    color = DashboardTheme.TextSecondary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 1.sp
-                )
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = value,
-                        color = color,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    if (unit.isNotEmpty()) {
-                        Text(
-                            text = unit,
-                            color = DashboardTheme.TextSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusControlCard(
-    timestamp: Long,
-    isConnected: Boolean,
-    onStop: () -> Unit,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val formatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    val timeString = remember(timestamp) { formatter.format(Date(timestamp)) }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = DashboardTheme.CardBlack),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "TIME",
-                    color = DashboardTheme.TextSecondary,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = timeString,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .alpha(if (isConnected) alpha else 0.3f)
-                        .background(
-                            if (isConnected) DashboardTheme.Green else Color.Gray,
-                            CircleShape
-                        )
-                )
-                Text(
-                    text = if (isConnected) "ONLINE" else "OFFLINE",
-                    color = if (isConnected) DashboardTheme.Green else Color.Gray,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 1.sp
-                )
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .background(
-                            DashboardTheme.Yellow.copy(alpha = 0.15f),
-                            RoundedCornerShape(6.dp)
-                        )
-                        .border(
-                            1.dp,
-                            DashboardTheme.Yellow.copy(alpha = 0.3f),
-                            RoundedCornerShape(6.dp)
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = DashboardTheme.Yellow,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onStop,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .background(
-                            DashboardTheme.Red.copy(alpha = 0.15f),
-                            RoundedCornerShape(6.dp)
-                        )
-                        .border(
-                            1.dp,
-                            DashboardTheme.Red.copy(alpha = 0.3f),
-                            RoundedCornerShape(6.dp)
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.Stop,
-                        contentDescription = "Stop",
-                        tint = DashboardTheme.Red,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun FileSelectionScreen(onFileSelect: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DashboardTheme.MainBlack),
+            .background(DashboardTheme.CardBlack, RoundedCornerShape(12.dp))
+            .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(32.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(DashboardTheme.Blue, RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "VS",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-            Text(
-                text = "VOLTSTAR",
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 4.sp
-            )
-            Button(
-                onClick = onFileSelect,
-                modifier = Modifier
-                    .width(240.dp)
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = DashboardTheme.Blue
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(
-                    Icons.Default.FolderOpen,
-                    contentDescription = null,
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "LOAD CA FILE",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 1.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ErrorScreen(message: String, onRetry: () -> Unit, onFileSelect: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DashboardTheme.MainBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            modifier = Modifier.padding(32.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
-                Icons.Default.Warning,
+                Icons.Default.Cable,
                 contentDescription = null,
-                tint = DashboardTheme.Red,
-                modifier = Modifier.size(64.dp)
+                tint = DashboardTheme.TextSecondary,
+                modifier = Modifier.size(48.dp)
             )
             Text(
-                text = "ERROR",
-                color = DashboardTheme.Red,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 2.sp
-            )
-            Text(
-                text = message,
+                text = "Waiting for data...",
                 color = DashboardTheme.TextSecondary,
                 fontSize = 14.sp,
-                fontFamily = FontFamily.Monospace,
-                textAlign = TextAlign.Center
+                fontFamily = FontFamily.Monospace
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Button(
-                    onClick = onRetry,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DashboardTheme.Yellow
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = null,
-                        tint = Color.Black
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "RETRY",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Button(
-                    onClick = onFileSelect,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DashboardTheme.Blue
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "NEW FILE",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+            Text(
+                text = "Connect Cycle Analyst via USB",
+                color = DashboardTheme.TextSecondary.copy(alpha = 0.6f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+fun LogSection(logs: List<LogEntry>, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(DashboardTheme.CardBlack, RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "SYSTEM LOG",
+                color = DashboardTheme.TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "${logs.size} entries",
+                color = DashboardTheme.TextSecondary.copy(alpha = 0.6f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            logs.reversed().forEach { entry ->
+                LogEntryRow(entry)
             }
         }
+    }
+}
+
+@Composable
+fun LogEntryRow(entry: LogEntry) {
+    val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    val time = timeFormat.format(Date(entry.timestamp))
+
+    val color = when (entry.level) {
+        LogLevel.INFO -> DashboardTheme.Blue
+        LogLevel.WARNING -> DashboardTheme.Yellow
+        LogLevel.ERROR -> DashboardTheme.Red
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DashboardTheme.MainBlack, RoundedCornerShape(4.dp))
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = time,
+            color = DashboardTheme.TextSecondary.copy(alpha = 0.6f),
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = entry.message,
+            color = color,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

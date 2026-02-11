@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- This file is used to filter for specific USB devices. -->
-    <!-- The vendor-id and product-id values should match your Cycle Analyst device. -->
-    <!-- 0x0403 (1027) is FTDI, a common USB-to-serial chip provider. -->
-    <!-- 0x6001 (24577) is a common product ID for their chips. -->
-    <!-- You may need to change these values for your specific hardware. -->
-    <usb-device vendor-id="1027" product-id="24577" />
+    <usb-device vendor-id="1027" />
+    <usb-device class="2" subclass="2" protocol="1" />
+    <usb-device vendor-id="6790" />
+    <usb-device vendor-id="4292" />
+    <usb-device vendor-id="1659" />
 </resources>
