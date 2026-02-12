@@ -6,6 +6,7 @@
 <title>VoltStar Neural AI</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
@@ -236,19 +237,13 @@
             <option value="speed-distance">Speed vs Distance</option>
           </select>
         </div>
-        <div class="control-group">
-          <label>Time:</label>
-          <div class="time-window-buttons">
-            <button class="time-window-btn" data-window="5min">5 min</button>
-            <button class="time-window-btn" data-window="10min">10 min</button>
-            <button class="time-window-btn" data-window="30min">30 min</button>
-            <button class="time-window-btn active" data-window="all">All</button>
-          </div>
-        </div>
       </div>
     </div>
     <div class="chart-wrapper">
       <canvas id="telemetryChart"></canvas>
+    </div>
+    <div class="chart-hint">
+      💡 Drag to pan • Ctrl+Scroll to zoom • Touch: pinch to zoom
     </div>
   </div>
 </div>
