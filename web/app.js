@@ -75,7 +75,7 @@ const PAN_VISIBLE_POINTS = 50;
 
 // Vehicle physical constants
 const VEHICLE_CONSTANTS = {
-  batteryCapacity: 26,       // Ah
+  batteryCapacity: 14,       // Ah  (48V 14Ah pack)
   batteryVoltage: 48,        // V
   motorPower: 1000,          // W
   wheelDiameter: 0.66,       // m
@@ -88,7 +88,7 @@ const VEHICLE_CONSTANTS = {
   maxTorque: 50,
   maxPower: 1000,
   maxCurrent: 30,
-  maxVoltage: 60,
+  maxVoltage: 54,            // SLA full charge ceiling ~52-53V
   maxSpeed: 60
 };
 
@@ -901,10 +901,10 @@ function applyDynamicColors() {
   const power = currentData.power;
   
   applyColorToValue('voltageValue', voltage, [
-    { min: 52, color: '#00ff00' },
-    { min: 48, color: '#ffff00' },
-    { min: 42, color: '#ffaa00' },
-    { min: 0, color: '#ff0000' }
+    { min: 49, color: '#00ff00' },   // healthy SLA working voltage
+    { min: 46, color: '#88ff00' },   // 50% DoD approaching
+    { min: 44, color: '#ffaa00' },   // near safe discharge limit
+    { min: 0,  color: '#ff0000' }    // below safe SLA floor
   ]);
   
   applyColorToValue('currentValue', Math.abs(current), [
@@ -986,137 +986,136 @@ function addTrainingLog(message, type = 'info') {
 function updateDiagnostics() {
   const container = document.getElementById('aiDiagnostics');
   if (!container) return;
-  
+
   container.innerHTML = '';
-  
+
+  // ── No data state ──────────────────────────────────────────────────────────
   if (telemetryData.timestamps.length === 0) {
-    container.innerHTML = '<div class="diagnostic-item"><div class="diagnostic-message">No data available yet</div></div>';
+    const empty = document.createElement('div');
+    empty.className = 'diag-empty';
+    empty.textContent = 'Waiting for telemetry data…';
+    container.appendChild(empty);
     return;
   }
-  
-  // System Status
-  addDiagnostic(container, 'System Status', 
-    isConnected ? 'Connected' : 'Disconnected',
-    isConnected ? 'excellent' : 'critical',
-    `Last update: ${new Date(lastUpdateTimestamp).toLocaleTimeString()}`,
-    isConnected ? '✓ Receiving live telemetry data' : '⚠ Check Android app connection'
-  );
-  
-  // Battery Health
+
+  // ── 1. Connection Status ───────────────────────────────────────────────────
+  const lastTime = lastUpdateTimestamp > 0
+    ? new Date(lastUpdateTimestamp).toLocaleTimeString()
+    : '—';
+  addDiagCard(container, {
+    label: 'Connection',
+    status: isConnected ? 'excellent' : 'critical',
+    primary: isConnected ? 'CONNECTED' : 'DISCONNECTED',
+    detail: `Last packet: ${lastTime}`,
+    note: isConnected ? 'Live data stream active' : 'Check Android app connection'
+  });
+
+  // ── 2. Battery Health  (48 V SLA, 14 Ah — 4 × 12 V in series) ───────────
   const voltage = currentData.voltage;
-  const soc = currentData.soc;
-  let batteryStatus = 'excellent';
-  let batteryMessage = 'Battery health is good';
-  if (voltage < 42) {
-    batteryStatus = 'critical';
-    batteryMessage = 'Low voltage - charge immediately';
-  } else if (voltage < 48) {
-    batteryStatus = 'moderate';
-    batteryMessage = 'Battery voltage below nominal';
+  const soc     = currentData.soc;
+  const ahUsed  = currentData.ah;
+
+  // SLA 48V pack: full charge ~52-53V, nominal 48V, warn <46V, critical <44V
+  // Discharging below ~44V (11V/cell) permanently damages SLA cells
+  let batStatus = 'excellent';
+  let batNote   = 'Voltage and charge within normal range';
+  if (voltage > 0 && voltage < 44) {
+    batStatus = 'critical';
+    batNote   = 'Below safe SLA discharge limit — charge immediately';
+  } else if (voltage < 46) {
+    batStatus = 'moderate';
+    batNote   = 'Approaching 50% depth of discharge — recharge soon';
   } else if (soc < 20) {
-    batteryStatus = 'moderate';
-    batteryMessage = 'Low state of charge';
+    batStatus = 'moderate';
+    batNote   = 'State of charge is low';
+  } else if (voltage >= 46 && voltage < 49) {
+    batStatus = 'good';
+    batNote   = 'Voltage slightly below nominal';
   }
-  addDiagnostic(container, 'Battery Health',
-    `${voltage.toFixed(1)}V / ${soc.toFixed(0)}%`,
-    batteryStatus,
-    batteryMessage,
-    `Ah used: ${currentData.ah.toFixed(2)} / ${VEHICLE_CONSTANTS.batteryCapacity}`
-  );
-  
-  // Motor Status
-  const rpm = currentData.rpm;
-  const power = currentData.power;
+
+  addDiagCard(container, {
+    label: 'Battery Health',
+    status: batStatus,
+    primary: `${voltage.toFixed(1)} V`,
+    detail: `SOC ${soc.toFixed(0)} %  ·  ${ahUsed.toFixed(2)} / ${VEHICLE_CONSTANTS.batteryCapacity} Ah used`,
+    note: batNote
+  });
+
+  // ── 3. Motor / Power Status  (1000 W nominal, ~20 A max @ 48 V) ───────────
+  const power   = currentData.power;
+  const current = currentData.current;
+
+  // 1000 W / 48 V ≈ 20.8 A nominal max
   let motorStatus = 'excellent';
-  let motorMessage = 'Motor operating normally';
-  if (power > 900) {
+  let motorNote   = 'Motor operating within normal limits';
+  if (power > 950) {
+    motorStatus = 'critical';
+    motorNote   = 'Power at or above rated limit';
+  } else if (power > 800) {
     motorStatus = 'moderate';
-    motorMessage = 'High power draw';
-  }
-  if (rpm > 450) {
+    motorNote   = 'High power draw — sustained use not recommended';
+  } else if (current > 20) {
     motorStatus = 'moderate';
-    motorMessage = 'High RPM - approaching limit';
+    motorNote   = 'Current near rated maximum (20.8 A)';
   }
-  addDiagnostic(container, 'Motor Status',
-    `${rpm} RPM / ${power.toFixed(0)}W`,
-    motorStatus,
-    motorMessage,
-    `Torque: ${currentData.torque.toFixed(1)} Nm`
-  );
-  
-  // Speed & Performance
-  const speed = currentData.speed;
-  let speedStatus = 'good';
-  if (speed > 50) {
-    speedStatus = 'moderate';
-  }
-  addDiagnostic(container, 'Speed & Performance',
-    `${speed.toFixed(1)} km/h`,
-    speedStatus,
-    `Current speed`,
-    `Acceleration: ${currentData.acceleration.toFixed(2)} m/s²`
-  );
-  
-  // Efficiency
-  const efficiency = currentData.energyPerKm;
-  let efficiencyStatus = 'excellent';
-  let efficiencyMessage = 'Excellent efficiency';
-  if (efficiency > 40) {
-    efficiencyStatus = 'moderate';
-    efficiencyMessage = 'Higher than average consumption';
-  } else if (efficiency > 30) {
-    efficiencyStatus = 'good';
-    efficiencyMessage = 'Good efficiency';
-  }
-  addDiagnostic(container, 'Energy Efficiency',
-    `${efficiency.toFixed(1)} Wh/km`,
-    efficiencyStatus,
-    efficiencyMessage,
-    `Distance: ${currentData.distance.toFixed(2)} km`
-  );
-  
-  // System Warnings
-  const warnings = [];
-  if (currentData.voltageLimiting) warnings.push('Voltage limiting active');
-  if (currentData.currentLimiting) warnings.push('Current limiting active');
-  if (currentData.speedLimiting) warnings.push('Speed limiting active');
-  if (currentData.brakeActive) warnings.push('Brake engaged');
-  if (currentData.throttleFault) warnings.push('Throttle fault detected');
-  
-  if (warnings.length > 0) {
-    addDiagnostic(container, 'System Warnings',
-      `${warnings.length} active`,
-      'moderate',
-      warnings.join(', '),
-      `Active preset: ${currentData.activePreset}`
-    );
-  }
-  
-  // Data Quality
-  const dataPoints = telemetryData.timestamps.length;
-  addDiagnostic(container, 'Data Quality',
-    `${dataPoints} readings`,
-    dataPoints > 100 ? 'excellent' : dataPoints > 50 ? 'good' : 'moderate',
-    `${dataPoints} data points collected`,
-    trainingEpochs > 0 ? `Model trained with ${trainingEpochs} epochs` : 'Model not yet trained'
-  );
+
+  addDiagCard(container, {
+    label: 'Motor Status',
+    status: motorStatus,
+    primary: `${power.toFixed(0)} W`,
+    detail: `${current.toFixed(1)} A  ·  ${currentData.rpm} RPM  ·  ${currentData.torque.toFixed(1)} Nm`,
+    note: motorNote
+  });
+
+  // ── 4. System Flags ────────────────────────────────────────────────────────
+  const activeFlags = [];
+  if (currentData.voltageLimiting) activeFlags.push('Voltage Limiting');
+  if (currentData.currentLimiting) activeFlags.push('Current Limiting');
+  if (currentData.speedLimiting)   activeFlags.push('Speed Limiting');
+  if (currentData.brakeActive)     activeFlags.push('Brake Active');
+  if (currentData.throttleFault)   activeFlags.push('Throttle Fault');
+
+  addDiagCard(container, {
+    label: 'System Flags',
+    status: activeFlags.length === 0 ? 'excellent'
+          : currentData.throttleFault  ? 'critical'
+          : 'moderate',
+    primary: activeFlags.length === 0 ? 'None Active' : `${activeFlags.length} Active`,
+    detail: activeFlags.length > 0 ? activeFlags.join('  ·  ') : 'All systems nominal',
+    note: `Active preset: ${currentData.activePreset}`
+  });
+
+  // ── 5. Data Stream Quality ─────────────────────────────────────────────────
+  const pts = telemetryData.timestamps.length;
+  let   dsStatus = pts > 100 ? 'excellent' : pts > 50 ? 'good' : 'moderate';
+  let   dsNote   = trainingEpochs > 0
+    ? `Neural model trained — ${trainingEpochs} epochs`
+    : 'Model not yet trained';
+
+  addDiagCard(container, {
+    label: 'Data Stream',
+    status: dsStatus,
+    primary: `${pts} readings`,
+    detail: `Connected: ${isConnected ? 'Yes' : 'No'}`,
+    note: dsNote
+  });
 }
 
-function addDiagnostic(container, label, value, status, message, suggestion) {
-  const item = document.createElement('div');
-  item.className = 'diagnostic-item';
-  
-  item.innerHTML = `
-    <div class="diagnostic-header">
-      <div class="diagnostic-label">${label}</div>
-      <div class="diagnostic-status status-${status}">${status.toUpperCase()}</div>
+function addDiagCard(container, { label, status, primary, detail, note }) {
+  const card = document.createElement('div');
+  card.className = 'diag-card';
+
+  card.innerHTML = `
+    <div class="diag-card-row">
+      <span class="diag-card-label">${label}</span>
+      <span class="diag-badge diag-badge--${status}">${status.toUpperCase()}</span>
     </div>
-    <div class="diagnostic-value">${value}</div>
-    <div class="diagnostic-message">${message}</div>
-    ${suggestion ? `<div class="diagnostic-suggestion">💡 ${suggestion}</div>` : ''}
+    <div class="diag-card-primary">${primary}</div>
+    ${detail ? `<div class="diag-card-detail">${detail}</div>` : ''}
+    ${note   ? `<div class="diag-card-note">${note}</div>`   : ''}
   `;
-  
-  container.appendChild(item);
+
+  container.appendChild(card);
 }
 
 // ============================================================================
